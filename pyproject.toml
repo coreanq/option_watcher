@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "option-watcher"
+version = "0.1.0"
+description = "bybit option watcher"
+authors = ["Charles Park <coreanq@gmail.com>"]
+readme = "README.md"
+packages = [{include = "option_watcher"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+pybit = "^5.5.0"
+pyside6 = "^6.5.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
