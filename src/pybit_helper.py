@@ -1,7 +1,6 @@
 
 from pybit.unified_trading import HTTP
-import json,datetime, time
-
+import json,datetime, time, logging
 
 api_key = ''
 api_secret = ''
@@ -17,6 +16,8 @@ session = HTTP(
     api_secret= api_secret
 )
 
+log = logging.getLogger(__name__)
+file_log = logging.getLogger(__name__ + '_file')
 
 jango_info  = {}
 
@@ -73,8 +74,8 @@ def get_orderbook():
             original_price = float( jango_info[symbol_name]['avgPrice'] ) 
             fee = - float(  jango_info[symbol_name]['cumRealisedPnl'] )
 
-            jango_info[symbol_name]['profit'] = current_price * current_size  - original_price * current_size  - fee
-            jango_info[symbol_name]['pnl value'] = original_price * current_size  + fee
+            jango_info[symbol_name]['profit'] = round( current_price * current_size  - original_price * current_size  - fee, 2)
+            jango_info[symbol_name]['pnl value'] = round( original_price * current_size  + fee, 2)
 
             # print( '{} profit: {} $'.format( symbol_name, round( jango_info[symbol_name]['profit'] , 2) ) )
 
@@ -96,8 +97,10 @@ def calculate_pair_profit():
         total_profit[symbol_pair_name]['pnl value'] += round( value['pnl value'], 2)
 
     for key, value in total_profit.items():
-        print( '{}, {}'.format(key, value) )
-        if( value['profit'] > -1 ):
+        info = '{}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
+        log.info(info)
+        if( value['profit'] > value['pnl value'] * 0.2 ):
+            file_log.warning( info )
             make_place_order( key )
 
 
@@ -137,21 +140,31 @@ def make_place_order(symbol_pair_name):
                 },
             ]
         )
+        file_log.warning( json.dumps( result, indent=2 ))
         print( json.dumps(result, indent=2)  )
     else:
         print( 'err {}'.format ( target_symbol_list ) )
 
 
-#  최근  거래  내역 (  내 거래 내역 아님 )
+#  최근  거래  내역 ( 내 거래 내역 아님 )
 # print(session.get_public_trade_history(
 #     category="option",
 #     symbol="ETH-22SEP23-1600-P",
 # ))
 if __name__ == "__main__":
     # get postion
-    get_positions()
+    handler = logging.StreamHandler()
+    file_handler = logging.FileHandler('warning.log')
+    log.setLevel(logging.INFO)
+    file_log.setLevel(logging.WARNING)
+
+    handler.setFormatter(logging.Formatter( '%(asctime)s [%(levelname)s] %(message)s' ) )
+    file_handler.setFormatter(logging.Formatter( '%(asctime)s %(message)s - %(lineno)d' ) )
+    log.addHandler( handler ) 
+    file_log.addHandler( file_handler )
 
     while True:
+        get_positions()
         get_orderbook()
         calculate_pair_profit()
         time.sleep(0.5)
