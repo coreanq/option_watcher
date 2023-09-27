@@ -1,6 +1,6 @@
 
 from pybit.unified_trading import HTTP
-import json
+import json,datetime, time
 
 
 api_key = ''
@@ -17,104 +17,130 @@ session = HTTP(
     api_secret= api_secret
 )
 
-# print(session.get_option_delivery_price(
-#     category="option",
-#     symbol="ETH-26DEC22-1400-C",
-# ))
 
-result = (session.get_positions(
-    category="option"
-))
+jango_info  = {}
 
-
-if( result['retMsg'] == 'OK' ):
-    result = result['result']['list']
-
-
-jango_info = {}
-symbol_list = []
-
-for item in result:
-
-    symbol_name = item['symbol']
-    symbol_list.append( item['symbol'])
-    for del_key in ['leverage', 'autoAddMargin', 'liqPrice', 'riskLimitValue', 'trailingStop', 'takeProfit', 'tpslMode', 'riskId', 'adlRankIndicator', 'positionMM', 'positionIdx', 'positionIM', 'bustPrice', 'positionBalance', 'stopLoss', 'tradeMode']:
-        del item[del_key]
-    jango_info[symbol_name] = item
-    
-
-for symbol_name in symbol_list:
-    result = (session.get_orderbook(
-        category="option",
-        symbol= symbol_name,
-        limit = 3 
+def get_positions():
+    result = (session.get_positions(
+        category="option"
     ))
 
-    if( result['retMsg'] == "SUCCESS"):
-        result = result['result']
-        jango_info[symbol_name]['b'] = result['b']
-        jango_info[symbol_name]['a'] = result['a']
+
+    if( result['retMsg'] == 'OK' ):
+        result = result['result']['list']
+
+    symbol_list = []
+
+    for item in result:
+
+        symbol_name = item['symbol']
+        symbol_list.append( item['symbol'])
+        for del_key in ['leverage', 'autoAddMargin', 'liqPrice', 'riskLimitValue', 'trailingStop', 
+                        'takeProfit', 'tpslMode', 'riskId', 'adlRankIndicator', 'positionMM', 'positionIdx', 
+                        'positionIM', 'bustPrice', 'positionBalance', 'stopLoss', 'tradeMode',
+                        'createdTime', 'updatedTime', 'seq']:
+            del item[del_key]
+        jango_info[symbol_name] = item
+    
 
 
-        current_price = 0 
-        if( len(result['b']) != 0):
-            current_price = float(result['b'][0][0])
-        else:
+def get_orderbook():
+    for symbol_name in jango_info:
+        result = (session.get_orderbook(
+            category="option",
+            symbol= symbol_name,
+            limit = 3 
+        ))
+
+        if( result['retMsg'] == "SUCCESS"):
+            result = result['result']
+            jango_info[symbol_name]['b'] = result['b']
+            # jango_info[symbol_name]['a'] = result['a']
+            bid_list = result['b']
+
+            current_price = 0 
+            current_size = float(jango_info[symbol_name]['size'])
+            # check size and bid_list amount             
+            bid_total_amount = 0
             current_price = 0
+            for item in bid_list:
+                bid_total_amount += float(item[1])
 
-        current_size = float(jango_info[symbol_name]['size'])
+                if( current_size < bid_total_amount ):
+                    current_price = float(item[0])
+                    break
 
-        original_price = float( jango_info[symbol_name]['avgPrice'] ) 
-        fee = - float(  jango_info[symbol_name]['cumRealisedPnl'] )
+            original_price = float( jango_info[symbol_name]['avgPrice'] ) 
+            fee = - float(  jango_info[symbol_name]['cumRealisedPnl'] )
 
-        jango_info[symbol_name]['profit'] = current_price * current_size  - original_price * current_size  - fee
+            jango_info[symbol_name]['profit'] = current_price * current_size  - original_price * current_size  - fee
+            jango_info[symbol_name]['pnl value'] = original_price * current_size  + fee
 
-        print( '{} profit: {} $'.format( symbol_name, round( jango_info[symbol_name]['profit'] , 2) ) )
-
-
-total_profit = 0
-
-for key, value in jango_info.items():
-    total_profit += value['profit']
-
-
-
-print( 'total profit {}'.format( total_profit))
+            # print( '{} profit: {} $'.format( symbol_name, round( jango_info[symbol_name]['profit'] , 2) ) )
 
 
 
-# batch order
-symbol_name1 = 'ETH-28SEP23-1550-P'
-symbol_name2 = 'ETH-28SEP23-1625-C'
+def calculate_pair_profit():
+    total_profit = {}
 
-result = session.place_batch_order(
-    category="option",
-    request=[
-        {
-            "category": "option",
-            "symbol": symbol_name1,
-            "orderType": "Limit",
-            "side": "Sell",
-            "qty": "0.1",
-            "price": "1.2",
-            "orderLinkId": "option-test-001",
-            "mmp": False,
-            "reduceOnly": True # for option closing side Sell and must reduceOnly true 
-        },
-        {
-            "category": "option",
-            "symbol": symbol_name2, 
-            "orderType": "Limit",
-            "side": "Sell",
-            "qty": "0.1",
-            "price": "1.0",
-            "orderLinkId": "option-test-002",
-            "mmp": False,
-            "reduceOnly": True # for option closing side Sell and must reduceOnly true 
-        }
-    ]
-)
-print( json.dumps(result, indent=2)  )
+    for key, value in jango_info.items():
+        symbol_pair_name = key.split('-')[1]
+        if( symbol_pair_name not in total_profit ):
+            total_profit[symbol_pair_name] = {} 
+
+        if( 'profit' not in total_profit[symbol_pair_name] ):
+            total_profit[symbol_pair_name]['profit'] = 0
+            total_profit[symbol_pair_name]['pnl value'] = 0
+
+        total_profit[symbol_pair_name]['profit'] += round( value['profit'], 2)
+        total_profit[symbol_pair_name]['pnl value'] += round( value['pnl value'], 2)
+
+    for key, value in total_profit.items():
+        print( '{}, {}'.format(key, value) )
+        if( value['profit'] > -1 ):
+            make_place_order( key )
+
+
+def make_place_order(symbol_pair_name):
+    target_symbol_list = [] 
+
+    for key, value in jango_info.items():
+
+        if( symbol_pair_name in key ):
+            target_symbol_list.append(value)
+
+    if( len(target_symbol_list) == 2):
+        result = session.place_batch_order(
+            category="option",
+            request=[
+                {
+                    "category": "option",
+                    "symbol": target_symbol_list[0]['symbol'],
+                    "orderType": "Limit",
+                    "side": "Sell",
+                    "qty": target_symbol_list[0]['size'],
+                    "price": target_symbol_list[0]['b'][-1][0], # last price
+                    "orderLinkId": "{}-{}".format( target_symbol_list[0]['symbol'], datetime.datetime.now().strftime("%H:%M:%S") ), # should be unique string 
+                    "mmp": False,
+                    "reduceOnly": True # for option closing side Sell and must reduceOnly true 
+                },
+                {
+                    "category": "option",
+                    "symbol": target_symbol_list[1]['symbol'],
+                    "orderType": "Limit",
+                    "side": "Sell",
+                    "qty": target_symbol_list[1]['size'],
+                    "price": target_symbol_list[1]['b'][-1][0], # last price
+                    "orderLinkId": "{}-{}".format( target_symbol_list[1]['symbol'], datetime.datetime.now().strftime("%H:%M:%S") ), # should be unique string 
+                    "mmp": False,
+                    "reduceOnly": True # for option closing side Sell and must reduceOnly true 
+                },
+            ]
+        )
+        print( json.dumps(result, indent=2)  )
+    else:
+        print( 'err {}'.format ( target_symbol_list ) )
+
 
 #  최근  거래  내역 (  내 거래 내역 아님 )
 # print(session.get_public_trade_history(
@@ -123,6 +149,11 @@ print( json.dumps(result, indent=2)  )
 # ))
 if __name__ == "__main__":
     # get postion
-    # get orderbook repeatedly
-    # market price, real bid price show differently
+    get_positions()
+
+    while True:
+        get_orderbook()
+        calculate_pair_profit()
+        time.sleep(0.5)
+
     pass
