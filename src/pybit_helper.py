@@ -100,6 +100,7 @@ def calculate_pair_profit():
         info = '{}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
         log.info(info)
         if( value['profit'] > value['pnl value'] * 0.2 ):
+        # if( value['profit'] > -1 ):
             file_log.warning( info )
             make_place_order( key )
 
@@ -112,38 +113,36 @@ def make_place_order(symbol_pair_name):
         if( symbol_pair_name in key ):
             target_symbol_list.append(value)
 
-    if( len(target_symbol_list) == 2):
-        result = session.place_batch_order(
-            category="option",
-            request=[
-                {
-                    "category": "option",
-                    "symbol": target_symbol_list[0]['symbol'],
-                    "orderType": "Limit",
-                    "side": "Sell",
-                    "qty": target_symbol_list[0]['size'],
-                    "price": target_symbol_list[0]['b'][-1][0], # last price
-                    "orderLinkId": "{}-{}".format( target_symbol_list[0]['symbol'], datetime.datetime.now().strftime("%H:%M:%S") ), # should be unique string 
-                    "mmp": False,
-                    "reduceOnly": True # for option closing side Sell and must reduceOnly true 
-                },
-                {
-                    "category": "option",
-                    "symbol": target_symbol_list[1]['symbol'],
-                    "orderType": "Limit",
-                    "side": "Sell",
-                    "qty": target_symbol_list[1]['size'],
-                    "price": target_symbol_list[1]['b'][-1][0], # last price
-                    "orderLinkId": "{}-{}".format( target_symbol_list[1]['symbol'], datetime.datetime.now().strftime("%H:%M:%S") ), # should be unique string 
-                    "mmp": False,
-                    "reduceOnly": True # for option closing side Sell and must reduceOnly true 
-                },
-            ]
-        )
+    requests = []
+
+    for item in target_symbol_list:
+        request = {}
+
+        if( len(item['b']) != 0):
+            request['category'] = 'option', 
+            request['symbol'] = item['symbol']
+            request['orderType'] = 'Limit'
+            request['side'] = 'Sell'
+            request['qty'] = item['size']
+            request['price'] = item['b'][-1][0]
+            request['orderLinkId'] =  "{}-{}".format( item['symbol'], datetime.datetime.now().strftime("%H:%M:%S") ), # should be unique string 
+            request['mmp'] = False,
+            request['reduceOnly'] = True # for option closing side Sell and must reduceOnly true 
+            requests.append( request )
+
+    result = session.place_batch_order(
+        category = "option",
+        request = requests
+    )
+
+    if( result['retMsg'] == 'OK' ):
+        result = result['result']['list']
+
         file_log.warning( json.dumps( result, indent=2 ))
         print( json.dumps(result, indent=2)  )
-    else:
-        print( 'err {}'.format ( target_symbol_list ) )
+
+        for item in result:
+            del jango_info[item['symbol']]
 
 
 #  최근  거래  내역 ( 내 거래 내역 아님 )
@@ -163,10 +162,15 @@ if __name__ == "__main__":
     log.addHandler( handler ) 
     file_log.addHandler( file_handler )
 
+    count = 0
     while True:
-        get_positions()
+        if( count % 20 == 0 ):
+            get_positions()
         get_orderbook()
+
         calculate_pair_profit()
-        time.sleep(0.5)
+        time.sleep(0.1)
+        count = count + 1
+
 
     pass
