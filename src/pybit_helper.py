@@ -46,7 +46,11 @@ def get_positions():
 
 
 def get_orderbook():
+    target_symbol_name_list = []
     for symbol_name in jango_info:
+        target_symbol_name_list.append(symbol_name)
+
+    for symbol_name in target_symbol_name_list:
         result = (session.get_orderbook(
             category="option",
             symbol= symbol_name,
@@ -55,29 +59,37 @@ def get_orderbook():
 
         if( result['retMsg'] == "SUCCESS"):
             result = result['result']
-            jango_info[symbol_name]['b'] = result['b']
-            # jango_info[symbol_name]['a'] = result['a']
-            bid_list = result['b']
+            # no longer contract avaliable 
+            if( 'b' not in result  ):
+                del jango_info[symbol_name]
+            # elif( len(result['b']) ==  0):
+            # # warinig 'b' is not showing short time
+            #     del jango_info[symbol_name]
+            else:
+                jango_info[symbol_name]['b'] = result['b']
+                # jango_info[symbol_name]['a'] = result['a']
+                bid_list = result['b']
 
-            current_price = 0 
-            current_size = float(jango_info[symbol_name]['size'])
-            # check size and bid_list amount             
-            bid_total_amount = 0
-            current_price = 0
-            for item in bid_list:
-                bid_total_amount += float(item[1])
+                current_price = 0 
+                current_size = float(jango_info[symbol_name]['size'])
+                # check size and bid_list amount             
+                bid_total_amount = 0
+                current_price = 0
+                for item in bid_list:
+                    bid_total_amount += float(item[1])
 
-                if( current_size < bid_total_amount ):
-                    current_price = float(item[0])
-                    break
+                    if( current_size < bid_total_amount ):
+                        current_price = float(item[0])
+                        break
 
-            original_price = float( jango_info[symbol_name]['avgPrice'] ) 
-            fee = - float(  jango_info[symbol_name]['cumRealisedPnl'] )
+                original_price = float( jango_info[symbol_name]['avgPrice'] ) 
+                fee = - float(  jango_info[symbol_name]['cumRealisedPnl'] )
 
-            jango_info[symbol_name]['profit'] = round( current_price * current_size  - original_price * current_size  - fee, 2)
-            jango_info[symbol_name]['pnl value'] = round( original_price * current_size  + fee, 2)
+                # fee * 2 when buy and sell
+                jango_info[symbol_name]['profit'] = round( current_price * current_size  - original_price * current_size  - (fee * 2), 2)
+                jango_info[symbol_name]['pnl value'] = round( original_price * current_size  + (fee * 2), 2)
 
-            # print( '{} profit: {} $'.format( symbol_name, round( jango_info[symbol_name]['profit'] , 2) ) )
+                # print( '{} profit: {} $'.format( symbol_name, round( jango_info[symbol_name]['profit'] , 2) ) )
 
 
 
@@ -88,10 +100,9 @@ def calculate_pair_profit():
         symbol_pair_name = key.split('-')[1]
         if( symbol_pair_name not in total_profit ):
             total_profit[symbol_pair_name] = {} 
-
-        if( 'profit' not in total_profit[symbol_pair_name] ):
             total_profit[symbol_pair_name]['profit'] = 0
             total_profit[symbol_pair_name]['pnl value'] = 0
+
 
         total_profit[symbol_pair_name]['profit'] += round( value['profit'], 2)
         total_profit[symbol_pair_name]['pnl value'] += round( value['pnl value'], 2)
@@ -100,7 +111,11 @@ def calculate_pair_profit():
         info = '{}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
         log.info(info)
         if( value['profit'] > value['pnl value'] * 0.2 ):
-        # if( value['profit'] > -1 ):
+        # if( True ):
+            for symbol_name in jango_info:
+                if( key in symbol_name):
+                    file_log.warning( '{}'.format( jango_info[symbol_name] ) )
+
             file_log.warning( info )
             make_place_order( key )
 
