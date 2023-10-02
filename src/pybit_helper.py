@@ -21,9 +21,9 @@ file_log = logging.getLogger(__name__ + '_file')
 
 jango_info  = {}
 
-def get_positions():
+def get_positions(category :str ):
     result = (session.get_positions(
-        category="option"
+        category= category
     ))
 
 
@@ -54,7 +54,7 @@ def get_orderbook():
         result = (session.get_orderbook(
             category="option",
             symbol= symbol_name,
-            limit = 3 
+            limit = 5 
         ))
 
         if( result['retMsg'] == "SUCCESS"):
@@ -179,13 +179,18 @@ if __name__ == "__main__":
 
     count = 0
     while True:
-        if( count % 20 == 0 ):
-            get_positions()
-        get_orderbook()
+        try:
+            if( count % 20 == 0 ):
+                get_positions("option")
+            get_orderbook()
 
-        calculate_pair_profit()
-        time.sleep(0.1)
-        count = count + 1
+            calculate_pair_profit()
+            time.sleep(0.1)
+            count = count + 1
+        except Exception as e:
+            print("except {}".format( e ))
+            time.sleep(10)
+
 
 
     pass
