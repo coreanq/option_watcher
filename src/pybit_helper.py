@@ -1,6 +1,6 @@
 
 from pybit.unified_trading import HTTP
-import json,datetime, time, logging
+import json,datetime, time, logging, datetime
 
 api_key = ''
 api_secret = ''
@@ -21,9 +21,10 @@ file_log = logging.getLogger(__name__ + '_file')
 
 jango_info  = {}
 
-def get_positions(category :str ):
+def get_positions(category :str, symbol :str ):
     result = (session.get_positions(
-        category= category
+        category= category,
+        symbol = symbol
     ))
 
 
@@ -45,19 +46,19 @@ def get_positions(category :str ):
     
 
 
-def get_orderbook():
+def get_orderbook(category : str):
     target_symbol_name_list = []
     for symbol_name in jango_info:
         target_symbol_name_list.append(symbol_name)
 
     for symbol_name in target_symbol_name_list:
         result = (session.get_orderbook(
-            category="option",
+            category = category,
             symbol= symbol_name,
             limit = 5 
         ))
 
-        if( result['retMsg'] == "SUCCESS"):
+        if( result['retMsg'] == "SUCCESS", result['retMsg'] == 'OK'):
             result = result['result']
             # no longer contract avaliable 
             if( 'b' not in result  ):
@@ -67,7 +68,7 @@ def get_orderbook():
             #     del jango_info[symbol_name]
             else:
                 jango_info[symbol_name]['b'] = result['b']
-                # jango_info[symbol_name]['a'] = result['a']
+                jango_info[symbol_name]['a'] = result['a']
                 bid_list = result['b']
 
                 current_price = 0 
@@ -92,8 +93,26 @@ def get_orderbook():
                 # print( '{} profit: {} $'.format( symbol_name, round( jango_info[symbol_name]['profit'] , 2) ) )
 
 
+def get_candle(category :str, symbol : str, interval : str):
+    result = (
+        session.get_kline(
+            category= category,
+            symbol= symbol,
+            interval= interval, 
+            limit = 150,
+        ))
+    if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
+        candle_list = result['result']['list']
+        for item in candle_list:
+            time_stamp  = int( int(item[0]) / 1000)
+            candle_time = datetime.datetime.fromtimestamp(time_stamp).strftime("%y-%m-%d %H:%M:%S")
+            open_price = float( item[1] )
+            amount = float( item[5])
+            print( candle_time )
 
-def calculate_pair_profit():
+
+
+def calculate_option_strangle_pair_profit():
     total_profit = {}
 
     for key, value in jango_info.items():
@@ -118,6 +137,20 @@ def calculate_pair_profit():
 
             file_log.warning( info )
             make_place_order( key )
+
+def calculate_linear_profit():
+
+    for key, value in jango_info.items():
+        info = '{}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
+        log.info(info)
+        # if( value['profit'] > value['pnl value'] * 0.2 ):
+        # # if( True ):
+        #     for symbol_name in jango_info:
+        #         if( key in symbol_name):
+        #             file_log.warning( '{}'.format( jango_info[symbol_name] ) )
+
+        #     file_log.warning( info )
+        #     make_place_order( key )
 
 
 def make_place_order(symbol_pair_name):
@@ -181,10 +214,12 @@ if __name__ == "__main__":
     while True:
         try:
             if( count % 20 == 0 ):
-                get_positions("option")
-            get_orderbook()
+                get_positions(category="linear", symbol = "XRPUSDT")
+            get_orderbook(category="linear")
+            calculate_linear_profit()
 
-            calculate_pair_profit()
+            get_candle(category="linear", symbol = "XRPUSDT", interval="D")
+
             time.sleep(0.1)
             count = count + 1
         except Exception as e:
