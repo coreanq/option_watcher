@@ -1,6 +1,6 @@
 
 from pybit.unified_trading import HTTP
-import json,datetime, time, logging, datetime
+import json,datetime, time, logging, datetime, numpy
 
 api_key = ''
 api_secret = ''
@@ -28,7 +28,7 @@ def get_positions(category :str, symbol :str ):
     ))
 
 
-    if( result['retMsg'] == 'OK' ):
+    if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
         result = result['result']['list']
 
     symbol_list = []
@@ -58,7 +58,7 @@ def get_orderbook(category : str):
             limit = 5 
         ))
 
-        if( result['retMsg'] == "SUCCESS", result['retMsg'] == 'OK'):
+        if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
             result = result['result']
             # no longer contract avaliable 
             if( 'b' not in result  ):
@@ -93,22 +93,54 @@ def get_orderbook(category : str):
                 # print( '{} profit: {} $'.format( symbol_name, round( jango_info[symbol_name]['profit'] , 2) ) )
 
 
-def get_candle(category :str, symbol : str, interval : str):
+def get_candle(category :str, symbol_name : str, interval : str):
     result = (
         session.get_kline(
             category= category,
-            symbol= symbol,
+            symbol= symbol_name,
             interval= interval, 
-            limit = 150,
+            limit = 70,
         ))
     if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
         candle_list = result['result']['list']
-        for item in candle_list:
+
+        jango_info[symbol_name]['candle'] = []
+        for index, item in enumerate(candle_list):
             time_stamp  = int( int(item[0]) / 1000)
             candle_time = datetime.datetime.fromtimestamp(time_stamp).strftime("%y-%m-%d %H:%M:%S")
-            open_price = float( item[1] )
+            close_price = float( item[4] )
             amount = float( item[5])
-            print( candle_time )
+            jango_info[symbol_name]['candle'].append( [candle_time, close_price, amount] )
+
+        close_price_list = [ n[1] for n in jango_info[symbol_name]['candle']  ]
+        close_price_list = close_price_list[::-1]
+
+        jango_info[symbol_name]['mean20']  = []
+        jango_info[symbol_name]['mean5']  = []
+        # 20 avr
+        for index, item in enumerate( close_price_list  ):
+
+            mean_target = 20 
+
+            if( index >= mean_target ):
+                mean_target_list =  close_price_list[index - mean_target: index ]
+                jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( numpy.mean( mean_target_list ) , 3 ) )
+            else:
+                jango_info[symbol_name]['mean{}'.format( mean_target )].append( 0 )
+
+            mean_target = 5
+
+            if( index >= mean_target ):
+                mean_target_list =  close_price_list[index - mean_target: index ]
+                jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( numpy.mean( mean_target_list ) , 3 ) )
+            else:
+                jango_info[symbol_name]['mean{}'.format( mean_target )].append( 0 )
+
+        print(jango_info[symbol_name]['mean20'])
+        print(jango_info[symbol_name]['mean5'])
+
+        # todo golden dead cross check and print date
+        pass
 
 
 
@@ -218,7 +250,7 @@ if __name__ == "__main__":
             get_orderbook(category="linear")
             calculate_linear_profit()
 
-            get_candle(category="linear", symbol = "XRPUSDT", interval="D")
+            get_candle(category="linear", symbol_name = "XRPUSDT", interval="D")
 
             time.sleep(0.1)
             count = count + 1
