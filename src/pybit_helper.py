@@ -126,7 +126,7 @@ def get_candle(category :str, symbol_name : str, interval : str):
                 mean_target_list =  close_price_list[index - mean_target: index ]
                 jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( numpy.mean( mean_target_list ) , 3 ) )
             else:
-                jango_info[symbol_name]['mean{}'.format( mean_target )].append( 0 )
+                jango_info[symbol_name]['mean{}'.format( mean_target )].append( None )
 
             mean_target = 5
 
@@ -134,7 +134,15 @@ def get_candle(category :str, symbol_name : str, interval : str):
                 mean_target_list =  close_price_list[index - mean_target: index ]
                 jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( numpy.mean( mean_target_list ) , 3 ) )
             else:
-                jango_info[symbol_name]['mean{}'.format( mean_target )].append( 0 )
+                jango_info[symbol_name]['mean{}'.format( mean_target )].append( None )
+            
+        for index, item in enumerate( jango_info[symbol_name]['mean20'] ):
+            if( index == 0 ):
+                continue
+            mean_target = 20 
+
+            pass
+
 
         print(jango_info[symbol_name]['mean20'])
         print(jango_info[symbol_name]['mean5'])
