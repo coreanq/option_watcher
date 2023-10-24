@@ -10,6 +10,7 @@ packages = [{include = "option_watcher"}]
 python = ">=3.10,<3.12"
 pybit = "^5.5.0"
 pyside6 = "^6.5.2"
+numpy = "^1.26.0"
 
 
 [build-system]

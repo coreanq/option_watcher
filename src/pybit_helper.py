@@ -116,6 +116,8 @@ def get_candle(category :str, symbol_name : str, interval : str):
         close_price_list = close_price_list[::-1]
 
         jango_info[symbol_name]['mean20']  = []
+        jango_info[symbol_name]['bol 20, 2 upper']  = []
+        jango_info[symbol_name]['bol 20, 2 lower']  = []
         jango_info[symbol_name]['mean5']  = []
         # 20 avr
         for index, item in enumerate( close_price_list  ):
@@ -124,30 +126,37 @@ def get_candle(category :str, symbol_name : str, interval : str):
 
             if( index >= mean_target ):
                 mean_target_list =  close_price_list[index - mean_target: index ]
-                jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( numpy.mean( mean_target_list ) , 3 ) )
+
+                mean_value = numpy.mean( mean_target_list ) 
+                std_value = numpy.std( mean_target_list ) * 2
+
+                jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 3 ) )
+                jango_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
+                jango_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
             else:
-                jango_info[symbol_name]['mean{}'.format( mean_target )].append( None )
+                jango_info[symbol_name]['mean{}'.format( mean_target )].append(None)
+                jango_info[symbol_name]['bol 20, 2 upper'].append(None)
+                jango_info[symbol_name]['bol 20, 2 lower'].append(None)
 
             mean_target = 5
 
             if( index >= mean_target ):
                 mean_target_list =  close_price_list[index - mean_target: index ]
-                jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( numpy.mean( mean_target_list ) , 3 ) )
+                mean_value = numpy.mean( mean_target_list ) 
+                jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 3 ) )
             else:
                 jango_info[symbol_name]['mean{}'.format( mean_target )].append( None )
             
-        for index, item in enumerate( jango_info[symbol_name]['mean20'] ):
-            if( index == 0 ):
-                continue
-            mean_target = 20 
+        last_price = close_price_list[-1]
+        last_std_upper_value = jango_info[symbol_name]['bol 20, 2 upper'][-1]
+        last_std_lower_value = jango_info[symbol_name]['bol 20, 2 lower'][-1]
 
-            pass
+        if( last_price > last_std_upper_value ):
+            print( 'bol upper cross')
 
+        if( last_price < last_std_lower_value ):
+            print( 'bol lower cross')
 
-        print(jango_info[symbol_name]['mean20'])
-        print(jango_info[symbol_name]['mean5'])
-
-        # todo golden dead cross check and print date
         pass
 
 
@@ -251,14 +260,17 @@ if __name__ == "__main__":
     file_log.addHandler( file_handler )
 
     count = 0
+    # symbol_name = "XRPUSDT"
+    symbol_name = "ETHUSDT"
     while True:
         try:
             if( count % 20 == 0 ):
-                get_positions(category="linear", symbol = "XRPUSDT")
+                get_positions(category="linear", symbol = symbol_name)
             get_orderbook(category="linear")
-            calculate_linear_profit()
+            # calculate_linear_profit()
+            calculate_option_strangle_pair_profit()
 
-            get_candle(category="linear", symbol_name = "XRPUSDT", interval="D")
+            get_candle(category="linear", symbol_name = symbol_name, interval="D")
 
             time.sleep(0.1)
             count = count + 1
