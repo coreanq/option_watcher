@@ -1,14 +1,26 @@
 
+from PyKakao import Message
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import ssl, socketserver
+
+from urllib.parse import urlparse
+
 from pybit.unified_trading import HTTP
 import json,datetime, time, logging, datetime, numpy
 
 api_key = ''
 api_secret = ''
+kakao_rest_api_key = ''
+kakao_redirect_url = ''
 
 with open('auth/auth_info.json') as f:
     auth_info = json.load(f)
     api_key = auth_info['api_key']
     api_secret = auth_info['api_secret']
+    kakao_rest_api_key = auth_info['kakao_rest_api_key']
+
+# 메시지 API 인스턴스 생성
+MSG = Message(service_key = kakao_rest_api_key )
 
 session = HTTP(
     testnet=False,
@@ -247,6 +259,50 @@ def make_place_order(symbol_pair_name):
 #     category="option",
 #     symbol="ETH-22SEP23-1600-P",
 # ))
+
+
+# kakao 에 로그인 하여 access 토큰을 얻어야 함 
+# 한번 얻으면 계속 사용 가능 
+def kakao_get_redirect_url():
+
+    # 카카오 인증코드 발급 URL 생성
+    auth_url = MSG.get_url_for_generating_code()
+    print("")
+    print( auth_url )
+    print("")
+
+    # redirect url 에서 parameter 정보를 얻기 위함 
+    class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write('<h1>redirect url 수집이 완료되었습니다</h1>'.encode('utf-8'))
+            global kakao_redirect_url
+            kakao_redirect_url = 'https://localhost:5000{}'.format(self.path)
+            print(kakao_redirect_url)
+            self.server.server_close()
+
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+
+    context.load_cert_chain("auth/server.pem") # PUT YOUR cert.pem HERE
+
+    port = 5000
+    server_address = ("localhost", port) # CHANGE THIS IP & PORT
+
+    handler = SimpleHTTPRequestHandler
+
+    print(f'Server running on port:{port}')
+    try:
+        with socketserver.TCPServer(server_address, handler) as httpd:
+            httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+            httpd.serve_forever()
+    except Exception as e:
+        print("except {}".format( e ))
+    
+
+
 if __name__ == "__main__":
     # get postion
     handler = logging.StreamHandler()
@@ -258,6 +314,90 @@ if __name__ == "__main__":
     file_handler.setFormatter(logging.Formatter( '%(asctime)s %(message)s - %(lineno)d' ) )
     log.addHandler( handler ) 
     file_log.addHandler( file_handler )
+
+
+    kakao_get_redirect_url()
+
+    # 위 URL로 액세스 토큰 추출
+    access_token = MSG.get_access_token_by_redirected_url(kakao_redirect_url)
+
+    # 액세스 토큰 설정
+    MSG.set_access_token(access_token)
+
+    # 텍스트 메시지 전송
+    content = {
+            "title": "오늘의 디저트",
+            "description": "아메리카노, 빵, 케익",
+            "image_url": "https://mud-kage.kakao.com/dn/NTmhS/btqfEUdFAUf/FjKzkZsnoeE4o19klTOVI1/openlink_640x640s.jpg",
+            "image_width": 640,
+            "image_height": 640,
+            "link": {
+                "web_url": "http://www.daum.net",
+                "mobile_web_url": "http://m.daum.net",
+                "android_execution_params": "contentId=100",
+                "ios_execution_params": "contentId=100"
+            }
+    }
+
+    item_content = {
+                "profile_text" :"Kakao",
+                "profile_image_url" :"https://mud-kage.kakao.com/dn/Q2iNx/btqgeRgV54P/VLdBs9cvyn8BJXB3o7N8UK/kakaolink40_original.png",
+                "title_image_url" : "https://mud-kage.kakao.com/dn/Q2iNx/btqgeRgV54P/VLdBs9cvyn8BJXB3o7N8UK/kakaolink40_original.png",
+                "title_image_text" :"Cheese cake",
+                "title_image_category" : "Cake",
+                "items" : [
+                    {
+                        "item" :"Cake1",
+                        "item_op" : "1000원"
+                    },
+                    {
+                        "item" :"Cake2",
+                        "item_op" : "2000원"
+                    },
+                    {
+                        "item" :"Cake3",
+                        "item_op" : "3000원"
+                    },
+                    {
+                        "item" :"Cake4",
+                        "item_op" : "4000원"
+                    },
+                    {
+                        "item" :"Cake5",
+                        "item_op" : "5000원"
+                    }
+                ],
+                "sum" :"Total",
+                "sum_op" : "15000원"
+            }
+
+    social = {
+                "like_count": 100,
+                "comment_count": 200,
+                "shared_count": 300,
+                "view_count": 400,
+                "subscriber_count": 500
+            }
+
+    buttons = [
+                {
+                    "title": "웹으로 이동",
+                    "link": {
+                        "web_url": "http://www.daum.net",
+                        "mobile_web_url": "http://m.daum.net"
+                    }
+                },
+                {
+                    "title": "앱으로 이동",
+                    "link": {
+                        "android_execution_params": "contentId=100",
+                        "ios_execution_params": "contentId=100"
+                    }
+                }
+            ]
+
+    MSG.send_feed(content=content, item_content=item_content, social=social, buttons=buttons)
+
 
     count = 0
     # symbol_name = "XRPUSDT"
