@@ -17,7 +17,7 @@ with open('auth/auth_info.json') as f:
     auth_info = json.load(f)
     api_key = auth_info['api_key']
     api_secret = auth_info['api_secret']
-    kakao_rest_api_key = auth_info['kakao_rest_api_key']
+    kakao_rest_api_key = auth_info.get('kakao_rest_api_key', '')
 
 # 메시지 API 인스턴스 생성
 MSG = Message(service_key = kakao_rest_api_key )
@@ -33,7 +33,7 @@ file_log = logging.getLogger(__name__ + '_file')
 
 jango_info  = {}
 
-def get_positions(category :str, symbol :str ):
+def get_positions(category :str, symbol :str):
     result = (session.get_positions(
         category= category,
         symbol = symbol
@@ -116,6 +116,9 @@ def get_candle(category :str, symbol_name : str, interval : str):
     if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
         candle_list = result['result']['list']
 
+        if( symbol_name not in jango_info ):
+            jango_info[symbol_name] = {}
+
         jango_info[symbol_name]['candle'] = []
         for index, item in enumerate(candle_list):
             time_stamp  = int( int(item[0]) / 1000)
@@ -173,10 +176,12 @@ def get_candle(category :str, symbol_name : str, interval : str):
 
 
 
-def calculate_option_strangle_pair_profit():
+def calculate_option_pair_profit():
     total_profit = {}
 
     for key, value in jango_info.items():
+        if( '-P' not in key and '-C' not in key ):
+            continue
         symbol_pair_name = key.split('-')[1]
         if( symbol_pair_name not in total_profit ):
             total_profit[symbol_pair_name] = {} 
@@ -184,18 +189,16 @@ def calculate_option_strangle_pair_profit():
             total_profit[symbol_pair_name]['pnl value'] = 0
 
 
-        total_profit[symbol_pair_name]['profit'] += round( value['profit'], 2)
-        total_profit[symbol_pair_name]['pnl value'] += round( value['pnl value'], 2)
+        total_profit[symbol_pair_name]['profit'] = round( total_profit[symbol_pair_name]['profit'] + value['profit'], 2)
+        total_profit[symbol_pair_name]['pnl value'] = round( total_profit[symbol_pair_name]['pnl value'] + value['pnl value'], 2)
 
     for key, value in total_profit.items():
-        info = '{}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
+        info = '{:>10}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
         log.info(info)
-        if( value['profit'] > value['pnl value'] * 0.2 ):
-        # if( True ):
+        if( value['profit'] > value['pnl value'] * 0.02 ):
             for symbol_name in jango_info:
                 if( key in symbol_name):
                     file_log.warning( '{}'.format( jango_info[symbol_name] ) )
-
             file_log.warning( info )
             make_place_order( key )
 
@@ -301,21 +304,7 @@ def kakao_get_redirect_url():
     except Exception as e:
         print("except {}".format( e ))
     
-
-
-if __name__ == "__main__":
-    # get postion
-    handler = logging.StreamHandler()
-    file_handler = logging.FileHandler('warning.log')
-    log.setLevel(logging.INFO)
-    file_log.setLevel(logging.WARNING)
-
-    handler.setFormatter(logging.Formatter( '%(asctime)s [%(levelname)s] %(message)s' ) )
-    file_handler.setFormatter(logging.Formatter( '%(asctime)s %(message)s - %(lineno)d' ) )
-    log.addHandler( handler ) 
-    file_log.addHandler( file_handler )
-
-
+def send_kakao_message():
     kakao_get_redirect_url()
 
     # 위 URL로 액세스 토큰 추출
@@ -397,26 +386,44 @@ if __name__ == "__main__":
             ]
 
     MSG.send_feed(content=content, item_content=item_content, social=social, buttons=buttons)
+    pass
+
+    
+
+if __name__ == "__main__":
+    # get postion
+    handler = logging.StreamHandler()
+    file_handler = logging.FileHandler('warning.log')
+    log.setLevel(logging.INFO)
+    file_log.setLevel(logging.WARNING)
+
+    handler.setFormatter(logging.Formatter( '%(asctime)s [%(levelname)s] %(message)s' ) )
+    file_handler.setFormatter(logging.Formatter( '%(asctime)s %(message)s - %(lineno)d' ) )
+    log.addHandler( handler ) 
+    file_log.addHandler( file_handler )
 
 
     count = 0
     # symbol_name = "XRPUSDT"
     symbol_name = "ETHUSDT"
     while True:
-        try:
-            if( count % 20 == 0 ):
-                get_positions(category="linear", symbol = symbol_name)
-            get_orderbook(category="linear")
-            # calculate_linear_profit()
-            calculate_option_strangle_pair_profit()
+        # try:
+        if( count % 20 == 0 ):
+            # 모든 포지션 정보 얻음 
+            # get_positions(category="linear", symbol = symbol_name)
+            get_positions(category="option", symbol='')
+        # get_orderbook(category="linear")
+        # calculate_linear_profit()
+        get_orderbook(category="option")
+        calculate_option_pair_profit()
 
-            get_candle(category="linear", symbol_name = symbol_name, interval="D")
+        get_candle(category="linear", symbol_name = symbol_name, interval="D")
 
-            time.sleep(0.1)
-            count = count + 1
-        except Exception as e:
-            print("except {}".format( e ))
-            time.sleep(10)
+        time.sleep(0.5)
+        count = count + 1
+        # except Exception as e:
+        #     print("except {}".format( e ))
+        #     time.sleep(1)
 
 
 
