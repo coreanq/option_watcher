@@ -15,7 +15,7 @@ with open('auth/auth_info.json') as f:
     auth_info = json.load(f)
     api_key = auth_info['api_key']
     api_secret = auth_info['api_secret']
-    kakao_rest_api_key = auth_info['kakao_rest_api_key']
+    kakao_rest_api_key = auth_info.get('kakao_rest_api_key', '')
 
 # 메시지 API 인스턴스 생성
 MSG = Message(service_key = kakao_rest_api_key )
@@ -33,7 +33,7 @@ jango_info  = {}
 
 event_occur_date_time  = None
 
-def get_positions(category :str, symbol :str ):
+def get_positions(category :str, symbol :str):
     result = (session.get_positions(
         category= category,
         symbol = symbol
@@ -115,6 +115,9 @@ def get_candle(category :str, symbol_name : str, interval : str):
         ))
     if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
         candle_list = result['result']['list']
+
+        if( symbol_name not in jango_info ):
+            jango_info[symbol_name] = {}
 
         jango_info[symbol_name]['candle'] = []
         for index, item in enumerate(candle_list):
@@ -200,12 +203,14 @@ def get_candle(category :str, symbol_name : str, interval : str):
 
 
 
-def calculate_option_strangle_pair_profit():
+def calculate_option_pair_profit():
     total_profit = {}
 
     for key, value in jango_info.items():
         if( '-' not in key ):
             break
+        if( '-P' not in key and '-C' not in key ):
+            continue
         symbol_pair_name = key.split('-')[1]
         if( symbol_pair_name not in total_profit ):
             total_profit[symbol_pair_name] = {} 
@@ -213,18 +218,16 @@ def calculate_option_strangle_pair_profit():
             total_profit[symbol_pair_name]['pnl value'] = 0
 
 
-        total_profit[symbol_pair_name]['profit'] += round( value['profit'], 2)
-        total_profit[symbol_pair_name]['pnl value'] += round( value['pnl value'], 2)
+        total_profit[symbol_pair_name]['profit'] = round( total_profit[symbol_pair_name]['profit'] + value['profit'], 2)
+        total_profit[symbol_pair_name]['pnl value'] = round( total_profit[symbol_pair_name]['pnl value'] + value['pnl value'], 2)
 
     for key, value in total_profit.items():
-        info = '{}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
+        info = '{:>10}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
         log.info(info)
-        if( value['profit'] > value['pnl value'] * 0.2 ):
-        # if( True ):
+        if( value['profit'] > value['pnl value'] * 0.02 ):
             for symbol_name in jango_info:
                 if( key in symbol_name):
                     file_log.warning( '{}'.format( jango_info[symbol_name] ) )
-
             file_log.warning( info )
             make_place_order( key )
 
