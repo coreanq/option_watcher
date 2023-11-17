@@ -3,8 +3,6 @@ from PyKakao import Message
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import ssl, socketserver
 
-from urllib.parse import urlparse
-
 from pybit.unified_trading import HTTP
 import json,datetime, time, logging, datetime, numpy
 
@@ -32,6 +30,8 @@ log = logging.getLogger(__name__)
 file_log = logging.getLogger(__name__ + '_file')
 
 jango_info  = {}
+
+event_occur_date_time  = None
 
 def get_positions(category :str, symbol :str ):
     result = (session.get_positions(
@@ -163,10 +163,37 @@ def get_candle(category :str, symbol_name : str, interval : str):
         last_std_upper_value = jango_info[symbol_name]['bol 20, 2 upper'][-1]
         last_std_lower_value = jango_info[symbol_name]['bol 20, 2 lower'][-1]
 
+        current_time = datetime.datetime.now()
+        diff_time = datetime.timedelta(hours=1)
+
+        global event_occur_date_time
+
         if( last_price > last_std_upper_value ):
+            text = "ETHUSDT 볼린저 밴드 상단 돌파"
+            button_title = "바로 확인"
+
+            if( event_occur_date_time == None ):
+                MSG.send_text(text=text, link={}, button_title=button_title)
+                event_occur_date_time = datetime.datetime.now()
+
+            elif( event_occur_date_time + diff_time < current_time ):
+                MSG.send_text(text=text, link={}, button_title=button_title)
+                event_occur_date_time = datetime.datetime.now()
+
             print( 'bol upper cross')
 
-        if( last_price < last_std_lower_value ):
+        elif( last_price < last_std_lower_value ):
+            text = "ETHUSDT 볼린저 밴드 하단 돌파"
+            button_title = "바로 확인"
+
+            if( event_occur_date_time == None ):
+                MSG.send_text(text=text, link={}, button_title=button_title)
+                event_occur_date_time = datetime.datetime.now()
+
+            elif( event_occur_date_time + diff_time < current_time ):
+                MSG.send_text(text=text, link={}, button_title=button_title)
+                event_occur_date_time = datetime.datetime.now()
+
             print( 'bol lower cross')
 
         pass
@@ -177,6 +204,8 @@ def calculate_option_strangle_pair_profit():
     total_profit = {}
 
     for key, value in jango_info.items():
+        if( '-' not in key ):
+            break
         symbol_pair_name = key.split('-')[1]
         if( symbol_pair_name not in total_profit ):
             total_profit[symbol_pair_name] = {} 
@@ -316,6 +345,9 @@ if __name__ == "__main__":
     file_log.addHandler( file_handler )
 
 
+
+    # 카카오 엑세스 토큰을 받으려면 카카오에 로그인후 redirect 되는 url 을 넣어주어야 하는데
+    # 로컬로 서버를 만들어서 리다이렉트 url 을 얻어 오는 방식을 취함 
     kakao_get_redirect_url()
 
     # 위 URL로 액세스 토큰 추출
@@ -324,79 +356,9 @@ if __name__ == "__main__":
     # 액세스 토큰 설정
     MSG.set_access_token(access_token)
 
-    # 텍스트 메시지 전송
-    content = {
-            "title": "오늘의 디저트",
-            "description": "아메리카노, 빵, 케익",
-            "image_url": "https://mud-kage.kakao.com/dn/NTmhS/btqfEUdFAUf/FjKzkZsnoeE4o19klTOVI1/openlink_640x640s.jpg",
-            "image_width": 640,
-            "image_height": 640,
-            "link": {
-                "web_url": "http://www.daum.net",
-                "mobile_web_url": "http://m.daum.net",
-                "android_execution_params": "contentId=100",
-                "ios_execution_params": "contentId=100"
-            }
-    }
-
-    item_content = {
-                "profile_text" :"Kakao",
-                "profile_image_url" :"https://mud-kage.kakao.com/dn/Q2iNx/btqgeRgV54P/VLdBs9cvyn8BJXB3o7N8UK/kakaolink40_original.png",
-                "title_image_url" : "https://mud-kage.kakao.com/dn/Q2iNx/btqgeRgV54P/VLdBs9cvyn8BJXB3o7N8UK/kakaolink40_original.png",
-                "title_image_text" :"Cheese cake",
-                "title_image_category" : "Cake",
-                "items" : [
-                    {
-                        "item" :"Cake1",
-                        "item_op" : "1000원"
-                    },
-                    {
-                        "item" :"Cake2",
-                        "item_op" : "2000원"
-                    },
-                    {
-                        "item" :"Cake3",
-                        "item_op" : "3000원"
-                    },
-                    {
-                        "item" :"Cake4",
-                        "item_op" : "4000원"
-                    },
-                    {
-                        "item" :"Cake5",
-                        "item_op" : "5000원"
-                    }
-                ],
-                "sum" :"Total",
-                "sum_op" : "15000원"
-            }
-
-    social = {
-                "like_count": 100,
-                "comment_count": 200,
-                "shared_count": 300,
-                "view_count": 400,
-                "subscriber_count": 500
-            }
-
-    buttons = [
-                {
-                    "title": "웹으로 이동",
-                    "link": {
-                        "web_url": "http://www.daum.net",
-                        "mobile_web_url": "http://m.daum.net"
-                    }
-                },
-                {
-                    "title": "앱으로 이동",
-                    "link": {
-                        "android_execution_params": "contentId=100",
-                        "ios_execution_params": "contentId=100"
-                    }
-                }
-            ]
-
-    MSG.send_feed(content=content, item_content=item_content, social=social, buttons=buttons)
+    text = "option wather 실행하였습니다."
+    button_title = "바로 확인"
+    MSG.send_text(text=text, link={}, button_title=button_title)
 
 
     count = 0
@@ -408,7 +370,7 @@ if __name__ == "__main__":
                 get_positions(category="linear", symbol = symbol_name)
             get_orderbook(category="linear")
             # calculate_linear_profit()
-            calculate_option_strangle_pair_profit()
+            # calculate_option_strangle_pair_profit()
 
             get_candle(category="linear", symbol_name = symbol_name, interval="D")
 
@@ -416,7 +378,7 @@ if __name__ == "__main__":
             count = count + 1
         except Exception as e:
             print("except {}".format( e ))
-            time.sleep(10)
+            time.sleep(5)
 
 
 
