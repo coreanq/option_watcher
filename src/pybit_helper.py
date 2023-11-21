@@ -410,7 +410,7 @@ def determine_buy_and_sell(symbol_name: str):
 
 
             print( "open {}, low {}, high {}, close {}" .format( 
-                                                                value['candle'][0]['open'],
+                                                                value['candle'][0]['time'],
                                                                 value['candle'][0]['open'],
                                                                 value['candle'][0]['low'], 
                                                                 value['candle'][0]['high'],
