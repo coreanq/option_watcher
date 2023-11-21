@@ -34,6 +34,8 @@ order_book_info = {}
 
 event_occur_date_time  = None
 
+server_port_number = 5678
+
 def get_positions(category :str, symbol :str):
     result = (session.get_positions(
         category= category,
@@ -349,21 +351,20 @@ def kakao_get_redirect_url():
             self.end_headers()
             self.wfile.write('<h1>redirect url 수집이 완료되었습니다</h1>'.encode('utf-8'))
             global kakao_redirect_url
-            kakao_redirect_url = 'https://localhost:5000{}'.format(self.path)
+            kakao_redirect_url = 'https://localhost:{}{}}'.format(server_port_number, self.path)
             print(kakao_redirect_url)
             self.server.server_close()
 
 
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 
-    context.load_cert_chain("auth/server.pem") # PUT YOUR cert.pem HERE
+    context.load_cert_chain( certfile="auth/CA.pem", keyfile="auth/CA.key") # PUT YOUR cert.pem HERE
 
-    port = 5000
-    server_address = ("localhost", port) # CHANGE THIS IP & PORT
+    server_address = ("localhost", server_port_number) # CHANGE THIS IP & PORT
 
     handler = SimpleHTTPRequestHandler
 
-    print(f'Server running on port:{port}')
+    print(f'Server running on port:{server_port_number}')
     try:
         with socketserver.TCPServer(server_address, handler) as httpd:
             httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
