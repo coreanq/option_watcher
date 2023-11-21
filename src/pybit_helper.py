@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 file_log = logging.getLogger(__name__ + '_file')
 
 jango_info  = {}
+order_book_info = {}
 
 event_occur_date_time  = None
 
@@ -58,52 +59,122 @@ def get_positions(category :str, symbol :str):
     
 
 
-def get_orderbook(category : str):
-    target_symbol_name_list = []
-    for symbol_name in jango_info:
-        target_symbol_name_list.append(symbol_name)
+def get_orderbook(category : str, symbol_name: str):
+    result = (session.get_orderbook(
+        category = category,
+        symbol= symbol_name,
+        limit = 5 
+    ))
 
-    for symbol_name in target_symbol_name_list:
-        result = (session.get_orderbook(
-            category = category,
-            symbol= symbol_name,
-            limit = 5 
-        ))
+    if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
+        result = result['result']
+        # no longer contract avaliable 
+        if( 'b' not in result  ):
+            pass
+        else:
+            if( symbol_name not in order_book_info):
+                order_book_info[symbol_name] = {}
+            order_book_info[symbol_name]['b'] = result['b']
+            order_book_info[symbol_name]['a'] = result['a']
+            # bid_list = result['b']
 
-        if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
-            result = result['result']
-            # no longer contract avaliable 
-            if( 'b' not in result  ):
-                del jango_info[symbol_name]
-            # elif( len(result['b']) ==  0):
-            # # warinig 'b' is not showing short time
-            #     del jango_info[symbol_name]
-            else:
-                jango_info[symbol_name]['b'] = result['b']
-                jango_info[symbol_name]['a'] = result['a']
-                bid_list = result['b']
+            # current_price = 0 
+            # current_size = float(jango_info[symbol_name]['size'])
+            # # check size and bid_list amount             
+            # bid_total_amount = 0
+            # current_price = 0
+            # for item in bid_list:
+            #     bid_total_amount += float(item[1])
 
-                current_price = 0 
-                current_size = float(jango_info[symbol_name]['size'])
-                # check size and bid_list amount             
-                bid_total_amount = 0
-                current_price = 0
-                for item in bid_list:
-                    bid_total_amount += float(item[1])
+            #     if( current_size < bid_total_amount ):
+            #         current_price = float(item[0])
+            #         break
 
-                    if( current_size < bid_total_amount ):
-                        current_price = float(item[0])
-                        break
+            # original_price = float( order_book_info[symbol_name]['avgPrice'] ) 
+            # fee = - float(  order_book_info[symbol_name]['cumRealisedPnl'] )
 
-                original_price = float( jango_info[symbol_name]['avgPrice'] ) 
-                fee = - float(  jango_info[symbol_name]['cumRealisedPnl'] )
+            # fee * 2 when buy and sell
+            # order_book_info[symbol_name]['profit'] = round( current_price * current_size  - original_price * current_size  - (fee * 2), 2)
+            # order_book_info[symbol_name]['pnl value'] = round( original_price * current_size  + (fee * 2), 2)
 
-                # fee * 2 when buy and sell
-                jango_info[symbol_name]['profit'] = round( current_price * current_size  - original_price * current_size  - (fee * 2), 2)
-                jango_info[symbol_name]['pnl value'] = round( original_price * current_size  + (fee * 2), 2)
+            # print( '{} profit: {} $'.format( symbol_name, round( order_book_info[symbol_name]['profit'] , 2) ) )
 
-                # print( '{} profit: {} $'.format( symbol_name, round( jango_info[symbol_name]['profit'] , 2) ) )
 
+
+def caculate_bollinger(symbol_name : str):
+    close_price_list = [ n[1] for n in jango_info[symbol_name]['candle']  ]
+    close_price_list = close_price_list[::-1]
+
+    jango_info[symbol_name]['mean20']  = []
+    jango_info[symbol_name]['bol 20, 2 upper']  = []
+    jango_info[symbol_name]['bol 20, 2 lower']  = []
+    jango_info[symbol_name]['mean5']  = []
+    # 20 avr
+    for index, item in enumerate( close_price_list  ):
+
+        mean_target = 20 
+
+        if( index >= mean_target ):
+            mean_target_list =  close_price_list[index - mean_target: index ]
+
+            mean_value = numpy.mean( mean_target_list ) 
+            std_value = numpy.std( mean_target_list ) * 2
+
+            jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 3 ) )
+            jango_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
+            jango_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
+        else:
+            jango_info[symbol_name]['mean{}'.format( mean_target )].append(None)
+            jango_info[symbol_name]['bol 20, 2 upper'].append(None)
+            jango_info[symbol_name]['bol 20, 2 lower'].append(None)
+
+        mean_target = 5
+
+        if( index >= mean_target ):
+            mean_target_list =  close_price_list[index - mean_target: index ]
+            mean_value = numpy.mean( mean_target_list ) 
+            jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 3 ) )
+        else:
+            jango_info[symbol_name]['mean{}'.format( mean_target )].append( None )
+        
+    last_price = close_price_list[-1]
+    last_std_upper_value = jango_info[symbol_name]['bol 20, 2 upper'][-1]
+    last_std_lower_value = jango_info[symbol_name]['bol 20, 2 lower'][-1]
+
+    current_time = datetime.datetime.now()
+    diff_time = datetime.timedelta(hours=1)
+
+    global event_occur_date_time
+
+    if( last_price > last_std_upper_value ):
+        text = "ETHUSDT 볼린저 밴드 상단 돌파"
+        button_title = "바로 확인"
+
+        if( event_occur_date_time == None ):
+            MSG.send_text(text=text, link={}, button_title=button_title)
+            event_occur_date_time = datetime.datetime.now()
+
+        elif( event_occur_date_time + diff_time < current_time ):
+            MSG.send_text(text=text, link={}, button_title=button_title)
+            event_occur_date_time = datetime.datetime.now()
+
+        print( 'bol upper cross')
+
+    elif( last_price < last_std_lower_value ):
+        text = "ETHUSDT 볼린저 밴드 하단 돌파"
+        button_title = "바로 확인"
+
+        if( event_occur_date_time == None ):
+            MSG.send_text(text=text, link={}, button_title=button_title)
+            event_occur_date_time = datetime.datetime.now()
+
+        elif( event_occur_date_time + diff_time < current_time ):
+            MSG.send_text(text=text, link={}, button_title=button_title)
+            event_occur_date_time = datetime.datetime.now()
+
+        print( 'bol lower cross')
+
+        pass
 
 def get_candle(category :str, symbol_name : str, interval : str):
     result = (
@@ -123,83 +194,14 @@ def get_candle(category :str, symbol_name : str, interval : str):
         for index, item in enumerate(candle_list):
             time_stamp  = int( int(item[0]) / 1000)
             candle_time = datetime.datetime.fromtimestamp(time_stamp).strftime("%y-%m-%d %H:%M:%S")
+            open_price = float( item[1] )
+            high_price = float ( item[2])
+            low_price = float( item [3])
             close_price = float( item[4] )
             amount = float( item[5])
-            jango_info[symbol_name]['candle'].append( [candle_time, close_price, amount] )
+            jango_info[symbol_name]['candle'].append( {'time': candle_time, 'open': open_price, 'high': high_price, 'low': low_price, 'close': close_price, 'amount': amount } )
 
-        close_price_list = [ n[1] for n in jango_info[symbol_name]['candle']  ]
-        close_price_list = close_price_list[::-1]
 
-        jango_info[symbol_name]['mean20']  = []
-        jango_info[symbol_name]['bol 20, 2 upper']  = []
-        jango_info[symbol_name]['bol 20, 2 lower']  = []
-        jango_info[symbol_name]['mean5']  = []
-        # 20 avr
-        for index, item in enumerate( close_price_list  ):
-
-            mean_target = 20 
-
-            if( index >= mean_target ):
-                mean_target_list =  close_price_list[index - mean_target: index ]
-
-                mean_value = numpy.mean( mean_target_list ) 
-                std_value = numpy.std( mean_target_list ) * 2
-
-                jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 3 ) )
-                jango_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
-                jango_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
-            else:
-                jango_info[symbol_name]['mean{}'.format( mean_target )].append(None)
-                jango_info[symbol_name]['bol 20, 2 upper'].append(None)
-                jango_info[symbol_name]['bol 20, 2 lower'].append(None)
-
-            mean_target = 5
-
-            if( index >= mean_target ):
-                mean_target_list =  close_price_list[index - mean_target: index ]
-                mean_value = numpy.mean( mean_target_list ) 
-                jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 3 ) )
-            else:
-                jango_info[symbol_name]['mean{}'.format( mean_target )].append( None )
-            
-        last_price = close_price_list[-1]
-        last_std_upper_value = jango_info[symbol_name]['bol 20, 2 upper'][-1]
-        last_std_lower_value = jango_info[symbol_name]['bol 20, 2 lower'][-1]
-
-        current_time = datetime.datetime.now()
-        diff_time = datetime.timedelta(hours=1)
-
-        global event_occur_date_time
-
-        if( last_price > last_std_upper_value ):
-            text = "ETHUSDT 볼린저 밴드 상단 돌파"
-            button_title = "바로 확인"
-
-            if( event_occur_date_time == None ):
-                MSG.send_text(text=text, link={}, button_title=button_title)
-                event_occur_date_time = datetime.datetime.now()
-
-            elif( event_occur_date_time + diff_time < current_time ):
-                MSG.send_text(text=text, link={}, button_title=button_title)
-                event_occur_date_time = datetime.datetime.now()
-
-            print( 'bol upper cross')
-
-        elif( last_price < last_std_lower_value ):
-            text = "ETHUSDT 볼린저 밴드 하단 돌파"
-            button_title = "바로 확인"
-
-            if( event_occur_date_time == None ):
-                MSG.send_text(text=text, link={}, button_title=button_title)
-                event_occur_date_time = datetime.datetime.now()
-
-            elif( event_occur_date_time + diff_time < current_time ):
-                MSG.send_text(text=text, link={}, button_title=button_title)
-                event_occur_date_time = datetime.datetime.now()
-
-            print( 'bol lower cross')
-
-        pass
 
 
 
@@ -229,7 +231,7 @@ def calculate_option_pair_profit():
                 if( key in symbol_name):
                     file_log.warning( '{}'.format( jango_info[symbol_name] ) )
             file_log.warning( info )
-            make_place_order( key )
+            make_place_order_option( key )
 
 def calculate_linear_profit():
 
@@ -246,7 +248,7 @@ def calculate_linear_profit():
         #     make_place_order( key )
 
 
-def make_place_order(symbol_pair_name):
+def make_place_order_option(symbol_pair_name: str, maemae_type : str):
     target_symbol_list = [] 
 
     for key, value in jango_info.items():
@@ -263,7 +265,7 @@ def make_place_order(symbol_pair_name):
             request['category'] = 'option', 
             request['symbol'] = item['symbol']
             request['orderType'] = 'Limit'
-            request['side'] = 'Sell'
+            request['side'] = maemae_type
             request['qty'] = item['size']
             request['price'] = item['b'][-1][0]
             request['orderLinkId'] =  "{}-{}".format( item['symbol'], datetime.datetime.now().strftime("%H:%M:%S") ), # should be unique string 
@@ -275,6 +277,42 @@ def make_place_order(symbol_pair_name):
         category = "option",
         request = requests
     )
+
+    if( result['retMsg'] == 'OK' ):
+        result = result['result']['list']
+
+        file_log.warning( json.dumps( result, indent=2 ))
+        print( json.dumps(result, indent=2)  )
+
+        for item in result:
+            del jango_info[item['symbol']]
+
+def make_place_order_linear(symbol_name: str, maemae_type: str, qty: str):
+    target_symbol_list = [] 
+
+    for key, value in jango_info.items():
+
+        requests = []
+
+        for item in target_symbol_list:
+            request = {}
+
+            if( len(item['b']) != 0):
+                request['category'] = 'linear', 
+                request['symbol'] = symbol_name,
+                request['orderType'] = 'Market'
+                request['side'] =  maemae_type
+                request['qty'] = qty
+                request['price'] = order_book_info[symbol_name]['b'][-1][0]
+                request['orderLinkId'] =  "{}-{}".format(  symbol_name, datetime.datetime.now().strftime("%H:%M:%S") ), # should be unique string 
+                request['mmp'] = False,
+                request['reduceOnly'] = True # for option closing side Sell and must reduceOnly true 
+                requests.append( request )
+
+        result = session.place_batch_order(
+            category = "option",
+            request = requests
+        )
 
     if( result['retMsg'] == 'OK' ):
         result = result['result']['list']
@@ -333,22 +371,7 @@ def kakao_get_redirect_url():
     except Exception as e:
         print("except {}".format( e ))
     
-
-
-if __name__ == "__main__":
-    # get postion
-    handler = logging.StreamHandler()
-    file_handler = logging.FileHandler('warning.log')
-    log.setLevel(logging.INFO)
-    file_log.setLevel(logging.WARNING)
-
-    handler.setFormatter(logging.Formatter( '%(asctime)s [%(levelname)s] %(message)s' ) )
-    file_handler.setFormatter(logging.Formatter( '%(asctime)s %(message)s - %(lineno)d' ) )
-    log.addHandler( handler ) 
-    file_log.addHandler( file_handler )
-
-
-
+def connect_kakao_api():
     # 카카오 엑세스 토큰을 받으려면 카카오에 로그인후 redirect 되는 url 을 넣어주어야 하는데
     # 로컬로 서버를 만들어서 리다이렉트 url 을 얻어 오는 방식을 취함 
     kakao_get_redirect_url()
@@ -364,18 +387,80 @@ if __name__ == "__main__":
     MSG.send_text(text=text, link={}, button_title=button_title)
 
 
+def determine_buy_and_sell(symbol_name: str):
+
+    # exclude option
+
+    maemae_type = 'Buy'
+
+    if( symbol_name in jango_info ):
+        maemae_type = 'Sell'
+
+    if( maemae_type == 'Buy' ):
+        pass
+    else:
+
+        for key, value in jango_info.items():
+            if ( '-' in symbol_name ):
+                # option exclude
+                continue
+
+            qty = value['size']
+
+
+            print( "open {}, low {}, high {}, close {}" .format( 
+                                                                value['candle'][0]['open'],
+                                                                value['candle'][0]['open'],
+                                                                value['candle'][0]['low'], 
+                                                                value['candle'][0]['high'],
+                                                                value['candle'][0]['close'])
+
+
+
+            # make_place_order_linear( key, maemae_type, qty )
+        # if( value['profit'] > value['pnl value'] * 0.2 ):
+        # # if( True ):
+        #     for symbol_name in jango_info:
+        #         if( key in symbol_name):
+        #             file_log.warning( '{}'.format( jango_info[symbol_name] ) )
+
+        #     file_log.warning( info )
+        #     make_place_order( key )
+
+    pass
+
+
+if __name__ == "__main__":
+    # get postion
+    handler = logging.StreamHandler()
+    file_handler = logging.FileHandler('warning.log')
+    log.setLevel(logging.INFO)
+    file_log.setLevel(logging.WARNING)
+
+    handler.setFormatter(logging.Formatter( '%(asctime)s [%(levelname)s] %(message)s' ) )
+    file_handler.setFormatter(logging.Formatter( '%(asctime)s %(message)s - %(lineno)d' ) )
+    log.addHandler( handler ) 
+    file_log.addHandler( file_handler )
+
+
     count = 0
     # symbol_name = "XRPUSDT"
     symbol_name = "ETHUSDT"
     while True:
         try:
-            if( count % 20 == 0 ):
-                get_positions(category="linear", symbol = symbol_name)
-            get_orderbook(category="linear")
+
+            get_positions(category="linear", symbol = symbol_name)
+
+
+            get_orderbook(category="linear", symbol_name= symbol_name)
             # calculate_linear_profit()
             # calculate_option_strangle_pair_profit()
 
-            get_candle(category="linear", symbol_name = symbol_name, interval="D")
+            # Kline interval. 1,3,5,15,30,60,120,240,360,720,D,M,W
+            # get_candle(category="linear", symbol_name = symbol_name, interval="D")
+            get_candle(category="linear", symbol_name = symbol_name, interval="15")
+
+            determine_buy_and_sell(symbol_name)
 
             time.sleep(0.1)
             count = count + 1
