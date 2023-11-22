@@ -322,9 +322,7 @@ def make_place_order_option(symbol_pair_name: str, maemae_type : str):
         for item in result:
             del jango_info[item['symbol']]
 
-def make_place_order_linear(symbol_name: str, maemae_type: str, dollar_amount: str):
-
-    requests = []
+def make_place_order_linear(symbol_name: str, maemae_type: str, dollar_amount: str)-> list:
     request = {}
 
     price = str(coin_info[symbol_name]['candle'][0]['close']) # 어차피 시장가 갯수 계산용 
@@ -346,8 +344,6 @@ def make_place_order_linear(symbol_name: str, maemae_type: str, dollar_amount: s
     request['side'] =  maemae_type
     request['qty'] = qty
 
-
-
     avg_price = ''
     if( symbol_name in jango_info ):
         avg_price = jango_info[symbol_name]['avgPrice']
@@ -362,18 +358,7 @@ def make_place_order_linear(symbol_name: str, maemae_type: str, dollar_amount: s
         ) # should be unique string 
 
     request['orderLinkId'] = link_order_id_string
-    requests.append( request )
-
-    result = session.place_batch_order(
-        category = "linear",
-        request = requests
-    )
-
-    if( result['retMsg'] == 'OK' ):
-        result = result['result']['list']
-
-        file_log.warning( json.dumps( result, indent=2 ))
-        print( json.dumps(result, indent=2)  )
+    return request
 
 
 # kakao 에 로그인 하여 access 토큰을 얻어야 함 
@@ -450,6 +435,8 @@ def determine_buy_and_sell(symbol_name_list: list):
 
         dollar_amount = 50
 
+        requests = []
+
         # 전봉 음봉에 매수 된게 없고 전고가 넘으면 
         if( 
             # True
@@ -459,7 +446,7 @@ def determine_buy_and_sell(symbol_name_list: list):
         ):
             print( '\nbuy  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
             maemae_type = "Buy"
-            make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount )
+            requests.append( make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount ) )
             pass
         elif( 
             # True
@@ -469,7 +456,21 @@ def determine_buy_and_sell(symbol_name_list: list):
             # qty = '0' # Sell All Bug
             qty = jango_info[symbol_name]['size']
             maemae_type = 'Sell'
-            make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount )
+            requests.append( make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount ) )
+        
+        if( len(requests) ):
+            result = session.place_batch_order(
+                category = "linear",
+                request = requests
+            )
+
+            if( result['retMsg'] == 'OK' ):
+                result = result['result']['list']
+
+                file_log.warning( json.dumps( result, indent=2 ))
+                print( json.dumps(result, indent=2)  )
+                get_positions(category="linear", settle_coin="USDT")
+
             pass
 
 
@@ -499,11 +500,12 @@ if __name__ == "__main__":
     interval = '15'
 
     get_instruments_info(category="linear", symbol_name_list= symbol_name_list)
+    get_positions(category="linear", settle_coin= 'USDT')
 
     while True:
         try:
 
-            get_positions(category="linear", settle_coin= 'USDT')
+            # get_positions(category="linear", settle_coin= 'USDT')
             # get_orderbook(category="linear", symbol_name_list= symbol_name_list)
 
             # Kline interval. 1,3,5,15,30,60,120,240,360,720,D,M,W
