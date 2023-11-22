@@ -31,6 +31,7 @@ file_log = logging.getLogger(__name__ + '_file')
 
 jango_info  = {}
 order_book_info = {}
+candle_info = {}
 
 event_occur_date_time  = None
 
@@ -48,16 +49,19 @@ def get_positions(category :str, symbol :str):
 
     symbol_list = []
 
+    # 잔고가 복수일수 있음 
     for item in result:
-
         symbol_name = item['symbol']
-        symbol_list.append( item['symbol'])
+
         for del_key in ['leverage', 'autoAddMargin', 'liqPrice', 'riskLimitValue', 'trailingStop', 
                         'takeProfit', 'tpslMode', 'riskId', 'adlRankIndicator', 'positionMM', 'positionIdx', 
                         'positionIM', 'bustPrice', 'positionBalance', 'stopLoss', 'tradeMode',
                         'createdTime', 'updatedTime', 'seq']:
             del item[del_key]
-        jango_info[symbol_name] = item
+        if( item['size'] == '0' and symbol_name in jango_info):
+            del jango_info[symbol_name] 
+        else:
+            jango_info[symbol_name] = item
     
 
 
@@ -104,6 +108,10 @@ def get_orderbook(category : str, symbol_name: str):
 
 
 def caculate_bollinger(symbol_name : str):
+    last_price = close_price_list[-1]
+    last_std_upper_value = candle_info[symbol_name]['bol 20, 2 upper'][-1]
+    last_std_lower_value = candle_info[symbol_name]['bol 20, 2 lower'][-1]
+
     close_price_list = [ n[1] for n in jango_info[symbol_name]['candle']  ]
     close_price_list = close_price_list[::-1]
 
@@ -178,6 +186,8 @@ def caculate_bollinger(symbol_name : str):
 
         pass
 
+
+# 20봉/ 5봉 평균 추가 
 def get_candle(category :str, symbol_name : str, interval : str):
     result = (
         session.get_kline(
@@ -189,10 +199,10 @@ def get_candle(category :str, symbol_name : str, interval : str):
     if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
         candle_list = result['result']['list']
 
-        if( symbol_name not in jango_info ):
-            jango_info[symbol_name] = {}
+        if( symbol_name not in candle_info ):
+            candle_info[symbol_name] = {}
 
-        jango_info[symbol_name]['candle'] = []
+        candle_info[symbol_name]['candle'] = []
         for index, item in enumerate(candle_list):
             time_stamp  = int( int(item[0]) / 1000)
             candle_time = datetime.datetime.fromtimestamp(time_stamp).strftime("%y-%m-%d %H:%M:%S")
@@ -201,8 +211,45 @@ def get_candle(category :str, symbol_name : str, interval : str):
             low_price = float( item [3])
             close_price = float( item[4] )
             amount = float( item[5])
-            jango_info[symbol_name]['candle'].append( {'time': candle_time, 'open': open_price, 'high': high_price, 'low': low_price, 'close': close_price, 'amount': amount } )
+            candle_info[symbol_name]['candle'].append( {'time': candle_time, 'open': open_price, 'high': high_price, 'low': low_price, 'close': close_price, 'amount': amount } )
 
+    close_price_list = [ n['close'] for n in candle_info[symbol_name]['candle']  ]
+    close_price_list = close_price_list[::-1]
+
+    candle_info[symbol_name]['mean20']  = []
+    candle_info[symbol_name]['bol 20, 2 upper']  = []
+    candle_info[symbol_name]['bol 20, 2 lower']  = []
+    candle_info[symbol_name]['mean5']  = []
+    # 20 avr
+    for index, item in enumerate( close_price_list  ):
+
+        mean_target = 20 
+
+        if( index >= mean_target ):
+            mean_target_list =  close_price_list[index - mean_target: index ]
+
+            mean_value = numpy.mean( mean_target_list ) 
+            std_value = numpy.std( mean_target_list ) * 2
+
+            candle_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 3 ) )
+            candle_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
+            candle_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
+        else:
+            candle_info[symbol_name]['mean{}'.format( mean_target )].append(None)
+            candle_info[symbol_name]['bol 20, 2 upper'].append(None)
+            candle_info[symbol_name]['bol 20, 2 lower'].append(None)
+
+        mean_target = 5
+
+        if( index >= mean_target ):
+            mean_target_list =  close_price_list[index - mean_target: index ]
+            mean_value = numpy.mean( mean_target_list ) 
+            candle_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 3 ) )
+        else:
+            candle_info[symbol_name]['mean{}'.format( mean_target )].append( None )
+        
+
+   
 
 
 
@@ -290,47 +337,38 @@ def make_place_order_option(symbol_pair_name: str, maemae_type : str):
             del jango_info[item['symbol']]
 
 def make_place_order_linear(symbol_name: str, maemae_type: str, qty: str):
-    target_symbol_list = [] 
 
-    for key, value in jango_info.items():
+    requests = []
+    request = {}
 
-        requests = []
+    if( len(order_book_info[symbol_name]['b']) != 0):
+        request['category'] = 'linear' 
+        request['symbol'] = symbol_name
+        request['orderType'] = 'Market'
+        request['side'] =  maemae_type
+        request['qty'] = qty
 
-        for item in target_symbol_list:
-            request = {}
+        # 호가가 자주 변하므로 3호가 위 가격으로 매매  
+        price = ''
+        if( maemae_type == "Sell"):
+            price = order_book_info[symbol_name]['b'][3][0]
+        else:
+            price = order_book_info[symbol_name]['a'][3][0]
+        request['price'] = price
 
-            if( len(item['b']) != 0):
-                request['category'] = 'linear', 
-                request['symbol'] = symbol_name,
-                request['orderType'] = 'Market'
-                request['side'] =  maemae_type
-                request['qty'] = qty
-                request['price'] = order_book_info[symbol_name]['b'][-1][0]
-                request['orderLinkId'] =  "{}-{}".format(  symbol_name, datetime.datetime.now().strftime("%H:%M:%S") ), # should be unique string 
-                request['mmp'] = False,
-                request['reduceOnly'] = True # for option closing side Sell and must reduceOnly true 
-                requests.append( request )
+        request['orderLinkId'] =  "{}-{}, {}, {}".format(  symbol_name, datetime.datetime.now().strftime("%H:%M:%S"), maemae_type, price ) # should be unique string 
+        requests.append( request )
 
-        result = session.place_batch_order(
-            category = "option",
-            request = requests
-        )
+    result = session.place_batch_order(
+        category = "linear",
+        request = requests
+    )
 
     if( result['retMsg'] == 'OK' ):
         result = result['result']['list']
 
         file_log.warning( json.dumps( result, indent=2 ))
         print( json.dumps(result, indent=2)  )
-
-        for item in result:
-            del jango_info[item['symbol']]
-
-
-#  최근  거래  내역 ( 내 거래 내역 아님 )
-# print(session.get_public_trade_history(
-#     category="option",
-#     symbol="ETH-22SEP23-1600-P",
-# ))
 
 
 # kakao 에 로그인 하여 access 토큰을 얻어야 함 
@@ -389,46 +427,44 @@ def connect_kakao_api():
 
 
 def determine_buy_and_sell(symbol_name: str):
-
     # exclude option
-
     maemae_type = 'Buy'
 
-    if( symbol_name in jango_info ):
-        maemae_type = 'Sell'
+    last_candle = candle_info[symbol_name]['candle'][1]
+    current_candle = candle_info[symbol_name]['candle'][0]
+    # print( current_candle )
 
-    if( maemae_type == 'Buy' ):
+    last_low_price = last_candle['low']
+    last_high_price = last_candle['high']
+    current_price = current_candle['close']
+
+
+    qty = "0.01"
+
+    # 매수 된게 없고 천고가 넘으면 
+    if( 
+        # True
+        last_high_price < current_price  
+        and symbol_name not in jango_info
+       ):
+        # bid 기준 current price
+        current_price = order_book_info[symbol_name]['b'][0][0]
+        print( '\nbuy  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
+        maemae_type = "Buy"
+        make_place_order_linear( symbol_name, maemae_type, qty )
         pass
-    else:
-
-        for key, value in jango_info.items():
-            if ( '-' in symbol_name ):
-                # option exclude
-                continue
-
-            qty = value['size']
-
-
-            print( "open {}, low {}, high {}, close {}" .format( 
-                                                                value['candle'][0]['time'],
-                                                                value['candle'][0]['open'],
-                                                                value['candle'][0]['low'], 
-                                                                value['candle'][0]['high'],
-                                                                value['candle'][0]['close'])
-
-
-
-            # make_place_order_linear( key, maemae_type, qty )
-        # if( value['profit'] > value['pnl value'] * 0.2 ):
-        # # if( True ):
-        #     for symbol_name in jango_info:
-        #         if( key in symbol_name):
-        #             file_log.warning( '{}'.format( jango_info[symbol_name] ) )
-
-        #     file_log.warning( info )
-        #     make_place_order( key )
-
-    pass
+    elif( 
+        # True
+        last_low_price > current_price and symbol_name in jango_info
+        ):
+        print( '\nsell  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
+        current_price = order_book_info[symbol_name]['a'][0][0]
+        # ask 기준 current price
+        # qty = '0' # Sell All
+        qty = jango_info[symbol_name]['size']
+        maemae_type = 'Sell'
+        make_place_order_linear( symbol_name, maemae_type, qty )
+        pass
 
 
 if __name__ == "__main__":
@@ -465,6 +501,7 @@ if __name__ == "__main__":
 
             time.sleep(0.1)
             count = count + 1
+            print("-", end='')
         except Exception as e:
             print("except {}".format( e ))
             time.sleep(5)
