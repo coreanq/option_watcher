@@ -38,6 +38,7 @@ event_occur_date_time  = None
 server_port_number = 5678
 
 def get_positions(category :str, symbol_name_list :list):
+# 잔고의 경우 팔고 나서 바로 적용되지 않는 문제 있음 
     for symbol in symbol_name_list:
         result = (session.get_positions(
             category= category,
@@ -345,7 +346,7 @@ def make_place_order_linear(symbol_name: str, maemae_type: str, qty: str):
         if( symbol_name in jango_info ):
             avg_price = jango_info[symbol_name]['avgPrice']
 
-        link_order_id_string = "{}-{}, {}, {}, avg:{}".format(  
+        link_order_id_string = "{}-{}, {}, {}: avg:{} ".format(  
             symbol_name, 
             datetime.datetime.now().strftime("%H:%M:%S"), 
             maemae_type, 
@@ -444,14 +445,14 @@ def determine_buy_and_sell(symbol_name_list: list):
 
         qty = ''
         if( 'XRP' in symbol_name):
-            qty = 1
+            qty = '1'
         elif( 'ETH' in symbol_name):
             qty = "0.01"
 
         # 전봉 음봉에 매수 된게 없고 전고가 넘으면 
         if( 
             # True
-            last_close_price < last_open_price and
+            # last_close_price < last_open_price and
             last_high_price < current_price  
             and symbol_name not in jango_info
         ):
