@@ -37,74 +37,54 @@ event_occur_date_time  = None
 
 server_port_number = 5678
 
-def get_positions(category :str, symbol :str):
-    result = (session.get_positions(
-        category= category,
-        symbol = symbol
-    ))
+def get_positions(category :str, symbol_name_list :list):
+    for symbol in symbol_name_list:
+        result = (session.get_positions(
+            category= category,
+            symbol = symbol
+        ))
 
 
-    if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
-        result = result['result']['list']
+        if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
+            result = result['result']['list']
 
-    symbol_list = []
+        symbol_list = []
 
-    # 잔고가 복수일수 있음 
-    for item in result:
-        symbol_name = item['symbol']
+        # 잔고가 복수일수 있음 
+        for item in result:
+            symbol_name = item['symbol']
 
-        for del_key in ['leverage', 'autoAddMargin', 'liqPrice', 'riskLimitValue', 'trailingStop', 
-                        'takeProfit', 'tpslMode', 'riskId', 'adlRankIndicator', 'positionMM', 'positionIdx', 
-                        'positionIM', 'bustPrice', 'positionBalance', 'stopLoss', 'tradeMode',
-                        'createdTime', 'updatedTime', 'seq']:
-            del item[del_key]
-        if( item['size'] == '0' and symbol_name in jango_info):
-            del jango_info[symbol_name] 
-        else:
-            jango_info[symbol_name] = item
+            for del_key in ['leverage', 'autoAddMargin', 'liqPrice', 'riskLimitValue', 'trailingStop', 
+                            'takeProfit', 'tpslMode', 'riskId', 'adlRankIndicator', 'positionMM', 'positionIdx', 
+                            'positionIM', 'bustPrice', 'positionBalance', 'stopLoss', 'tradeMode',
+                            'createdTime', 'updatedTime', 'seq']:
+                del item[del_key]
+            if( item['size'] == '0' and symbol_name in jango_info):
+                del jango_info[symbol_name] 
+            else:
+                jango_info[symbol_name] = item
     
 
 
-def get_orderbook(category : str, symbol_name: str):
-    result = (session.get_orderbook(
-        category = category,
-        symbol= symbol_name,
-        limit = 5 
-    ))
+def get_orderbook(category : str, symbol_name_list: list):
 
-    if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
-        result = result['result']
-        # no longer contract avaliable 
-        if( 'b' not in result  ):
-            pass
-        else:
-            if( symbol_name not in order_book_info):
-                order_book_info[symbol_name] = {}
-            order_book_info[symbol_name]['b'] = result['b']
-            order_book_info[symbol_name]['a'] = result['a']
-            # bid_list = result['b']
+    for symbol_name in symbol_name_list:
+        result = (session.get_orderbook(
+            category = category,
+            symbol= symbol_name,
+            limit = 5 
+        ))
 
-            # current_price = 0 
-            # current_size = float(jango_info[symbol_name]['size'])
-            # # check size and bid_list amount             
-            # bid_total_amount = 0
-            # current_price = 0
-            # for item in bid_list:
-            #     bid_total_amount += float(item[1])
-
-            #     if( current_size < bid_total_amount ):
-            #         current_price = float(item[0])
-            #         break
-
-            # original_price = float( order_book_info[symbol_name]['avgPrice'] ) 
-            # fee = - float(  order_book_info[symbol_name]['cumRealisedPnl'] )
-
-            # fee * 2 when buy and sell
-            # order_book_info[symbol_name]['profit'] = round( current_price * current_size  - original_price * current_size  - (fee * 2), 2)
-            # order_book_info[symbol_name]['pnl value'] = round( original_price * current_size  + (fee * 2), 2)
-
-            # print( '{} profit: {} $'.format( symbol_name, round( order_book_info[symbol_name]['profit'] , 2) ) )
-
+        if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
+            result = result['result']
+            # no longer contract avaliable 
+            if( 'b' not in result  ):
+                pass
+            else:
+                if( symbol_name not in order_book_info):
+                    order_book_info[symbol_name] = {}
+                order_book_info[symbol_name]['b'] = result['b']
+                order_book_info[symbol_name]['a'] = result['a']
 
 
 def caculate_bollinger(symbol_name : str):
@@ -188,65 +168,67 @@ def caculate_bollinger(symbol_name : str):
 
 
 # 20봉/ 5봉 평균 추가 
-def get_candle(category :str, symbol_name : str, interval : str):
-    result = (
-        session.get_kline(
-            category= category,
-            symbol= symbol_name,
-            interval= interval, 
-            limit = 70,
-        ))
-    if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
-        candle_list = result['result']['list']
+def get_candle(category :str, symbol_name_list : [], interval : str):
 
-        if( symbol_name not in candle_info ):
-            candle_info[symbol_name] = {}
+    for symbol_name in symbol_name_list:
+        result = (
+            session.get_kline(
+                category= category,
+                symbol= symbol_name,
+                interval= interval, 
+                limit = 70,
+            ))
+        if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
+            candle_list = result['result']['list']
 
-        candle_info[symbol_name]['candle'] = []
-        for index, item in enumerate(candle_list):
-            time_stamp  = int( int(item[0]) / 1000)
-            candle_time = datetime.datetime.fromtimestamp(time_stamp).strftime("%y-%m-%d %H:%M:%S")
-            open_price = float( item[1] )
-            high_price = float ( item[2])
-            low_price = float( item [3])
-            close_price = float( item[4] )
-            amount = float( item[5])
-            candle_info[symbol_name]['candle'].append( {'time': candle_time, 'open': open_price, 'high': high_price, 'low': low_price, 'close': close_price, 'amount': amount } )
+            if( symbol_name not in candle_info ):
+                candle_info[symbol_name] = {}
 
-    close_price_list = [ n['close'] for n in candle_info[symbol_name]['candle']  ]
-    close_price_list = close_price_list[::-1]
+            candle_info[symbol_name]['candle'] = []
+            for index, item in enumerate(candle_list):
+                time_stamp  = int( int(item[0]) / 1000)
+                candle_time = datetime.datetime.fromtimestamp(time_stamp).strftime("%y-%m-%d %H:%M:%S")
+                open_price = float( item[1] )
+                high_price = float ( item[2])
+                low_price = float( item [3])
+                close_price = float( item[4] )
+                amount = float( item[5])
+                candle_info[symbol_name]['candle'].append( {'time': candle_time, 'open': open_price, 'high': high_price, 'low': low_price, 'close': close_price, 'amount': amount } )
 
-    candle_info[symbol_name]['mean20']  = []
-    candle_info[symbol_name]['bol 20, 2 upper']  = []
-    candle_info[symbol_name]['bol 20, 2 lower']  = []
-    candle_info[symbol_name]['mean5']  = []
-    # 20 avr
-    for index, item in enumerate( close_price_list  ):
+        close_price_list = [ n['close'] for n in candle_info[symbol_name]['candle']  ]
+        close_price_list = close_price_list[::-1]
 
-        mean_target = 20 
+        candle_info[symbol_name]['mean20']  = []
+        candle_info[symbol_name]['bol 20, 2 upper']  = []
+        candle_info[symbol_name]['bol 20, 2 lower']  = []
+        candle_info[symbol_name]['mean5']  = []
+        # 20 avr
+        for index, item in enumerate( close_price_list  ):
 
-        if( index >= mean_target ):
-            mean_target_list =  close_price_list[index - mean_target: index ]
+            mean_target = 20 
 
-            mean_value = numpy.mean( mean_target_list ) 
-            std_value = numpy.std( mean_target_list ) * 2
+            if( index >= mean_target ):
+                mean_target_list =  close_price_list[index - mean_target: index ]
 
-            candle_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 3 ) )
-            candle_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
-            candle_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
-        else:
-            candle_info[symbol_name]['mean{}'.format( mean_target )].append(None)
-            candle_info[symbol_name]['bol 20, 2 upper'].append(None)
-            candle_info[symbol_name]['bol 20, 2 lower'].append(None)
+                mean_value = numpy.mean( mean_target_list ) 
+                std_value = numpy.std( mean_target_list ) * 2
 
-        mean_target = 5
+                candle_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 3 ) )
+                candle_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
+                candle_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
+            else:
+                candle_info[symbol_name]['mean{}'.format( mean_target )].append(None)
+                candle_info[symbol_name]['bol 20, 2 upper'].append(None)
+                candle_info[symbol_name]['bol 20, 2 lower'].append(None)
 
-        if( index >= mean_target ):
-            mean_target_list =  close_price_list[index - mean_target: index ]
-            mean_value = numpy.mean( mean_target_list ) 
-            candle_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 3 ) )
-        else:
-            candle_info[symbol_name]['mean{}'.format( mean_target )].append( None )
+            mean_target = 5
+
+            if( index >= mean_target ):
+                mean_target_list =  close_price_list[index - mean_target: index ]
+                mean_value = numpy.mean( mean_target_list ) 
+                candle_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 3 ) )
+            else:
+                candle_info[symbol_name]['mean{}'.format( mean_target )].append( None )
         
 
    
@@ -282,9 +264,11 @@ def calculate_option_pair_profit():
             file_log.warning( info )
             make_place_order_option( key )
 
-def calculate_linear_profit():
+def calculate_profit(symbol_name: str):
 
-    for key, value in jango_info.items():
+    if( symbol_name in jango_info ):
+        current_jango = jango_info[symbol_name]
+
         info = '{}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
         log.info(info)
         # if( value['profit'] > value['pnl value'] * 0.2 ):
@@ -356,7 +340,21 @@ def make_place_order_linear(symbol_name: str, maemae_type: str, qty: str):
             price = order_book_info[symbol_name]['a'][3][0]
         request['price'] = price
 
-        request['orderLinkId'] =  "{}-{}, {}, {}".format(  symbol_name, datetime.datetime.now().strftime("%H:%M:%S"), maemae_type, price ) # should be unique string 
+
+        avg_price = ''
+        if( symbol_name in jango_info ):
+            avg_price = jango_info[symbol_name]['avgPrice']
+
+        link_order_id_string = "{}-{}, {}, {}, avg:{}".format(  
+            symbol_name, 
+            datetime.datetime.now().strftime("%H:%M:%S"), 
+            maemae_type, 
+            price ,
+            avg_price
+
+            ) # should be unique string 
+
+        request['orderLinkId'] = link_order_id_string
         requests.append( request )
 
     result = session.place_batch_order(
@@ -426,45 +424,55 @@ def connect_kakao_api():
     MSG.send_text(text=text, link={}, button_title=button_title)
 
 
-def determine_buy_and_sell(symbol_name: str):
-    # exclude option
-    maemae_type = 'Buy'
-
-    last_candle = candle_info[symbol_name]['candle'][1]
-    current_candle = candle_info[symbol_name]['candle'][0]
-    # print( current_candle )
-
-    last_low_price = last_candle['low']
-    last_high_price = last_candle['high']
-    current_price = current_candle['close']
+def determine_buy_and_sell(symbol_name_list: list):
 
 
-    qty = "0.01"
+    for symbol_name in symbol_name_list:
+        # exclude option
+        maemae_type = 'Buy'
 
-    # 매수 된게 없고 천고가 넘으면 
-    if( 
-        # True
-        last_high_price < current_price  
-        and symbol_name not in jango_info
-       ):
-        # bid 기준 current price
-        current_price = order_book_info[symbol_name]['b'][0][0]
-        print( '\nbuy  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
-        maemae_type = "Buy"
-        make_place_order_linear( symbol_name, maemae_type, qty )
-        pass
-    elif( 
-        # True
-        last_low_price > current_price and symbol_name in jango_info
+        last_candle = candle_info[symbol_name]['candle'][1]
+        current_candle = candle_info[symbol_name]['candle'][0]
+        # print( current_candle )
+
+        last_open_price = last_candle['open']
+        last_close_price = last_candle['close']
+        last_low_price = last_candle['low']
+        last_high_price = last_candle['high']
+
+        current_price = current_candle['close']
+
+        qty = ''
+        if( 'XRP' in symbol_name):
+            qty = 1
+        elif( 'ETH' in symbol_name):
+            qty = "0.01"
+
+        # 전봉 음봉에 매수 된게 없고 전고가 넘으면 
+        if( 
+            # True
+            last_close_price < last_open_price and
+            last_high_price < current_price  
+            and symbol_name not in jango_info
         ):
-        print( '\nsell  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
-        current_price = order_book_info[symbol_name]['a'][0][0]
-        # ask 기준 current price
-        # qty = '0' # Sell All
-        qty = jango_info[symbol_name]['size']
-        maemae_type = 'Sell'
-        make_place_order_linear( symbol_name, maemae_type, qty )
-        pass
+            # bid 기준 current price
+            current_price = order_book_info[symbol_name]['b'][0][0]
+            print( '\nbuy  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
+            maemae_type = "Buy"
+            make_place_order_linear( symbol_name, maemae_type, qty )
+            pass
+        elif( 
+            # True
+            last_low_price > current_price and symbol_name in jango_info
+            ):
+            print( '\nsell  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
+            current_price = order_book_info[symbol_name]['a'][0][0]
+            # ask 기준 current price
+            # qty = '0' # Sell All
+            qty = jango_info[symbol_name]['size']
+            maemae_type = 'Sell'
+            make_place_order_linear( symbol_name, maemae_type, qty )
+            pass
 
 
 if __name__ == "__main__":
@@ -482,22 +490,25 @@ if __name__ == "__main__":
 
     count = 0
     # symbol_name = "XRPUSDT"
-    symbol_name = "ETHUSDT"
+
+    symbol_name_list = ['ETHUSDT', 'XRPUSDT' ]
+    interval = '15'
+
     while True:
         try:
 
-            get_positions(category="linear", symbol = symbol_name)
+            get_positions(category="linear", symbol_name_list= symbol_name_list)
 
 
-            get_orderbook(category="linear", symbol_name= symbol_name)
+            get_orderbook(category="linear", symbol_name_list= symbol_name_list)
             # calculate_linear_profit()
             # calculate_option_strangle_pair_profit()
 
             # Kline interval. 1,3,5,15,30,60,120,240,360,720,D,M,W
             # get_candle(category="linear", symbol_name = symbol_name, interval="D")
-            get_candle(category="linear", symbol_name = symbol_name, interval="15")
+            get_candle(category="linear", symbol_name_list = symbol_name_list, interval= interval)
 
-            determine_buy_and_sell(symbol_name)
+            determine_buy_and_sell(symbol_name_list)
 
             time.sleep(0.1)
             count = count + 1
