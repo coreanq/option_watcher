@@ -53,34 +53,33 @@ def get_instruments_info(category :str, symbol_name_list : list):
             coin_info[symbol_name]['qty_step'] = instruments_info['lotSizeFilter']['qtyStep']
 
 
-def get_positions(category :str, symbol_name_list :list):
+def get_positions(category :str, settle_coin :str):
 
-    for symbol in symbol_name_list:
-        result = (session.get_positions(
-            category= category,
-            symbol = symbol
-        ))
+    # for symbol in symbol_name_list:
+    result = (session.get_positions(
+        category= category,
+        settleCoin = settle_coin,
+    ))
 
 
-        if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
-            result = result['result']['list']
+    if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
+        result = result['result']['list']
 
-        symbol_list = []
+    jango_info = {}
+    # 잔고가 복수일수 있음 
+    for item in result:
+        symbol_name = item['symbol']
 
-        # 잔고가 복수일수 있음 
-        for item in result:
-            symbol_name = item['symbol']
-
-            for del_key in ['leverage', 'autoAddMargin', 'liqPrice', 'riskLimitValue', 'trailingStop', 
-                            'takeProfit', 'tpslMode', 'riskId', 'adlRankIndicator', 'positionMM', 'positionIdx', 
-                            'positionIM', 'bustPrice', 'positionBalance', 'stopLoss', 'tradeMode',
-                            'createdTime', 'updatedTime', 'seq']:
-                del item[del_key]
-            if( item['size'] == '0' ):
-                if( symbol_name in jango_info):
-                    del jango_info[symbol_name] 
-            else:
-                jango_info[symbol_name] = item
+        for del_key in ['leverage', 'autoAddMargin', 'liqPrice', 'riskLimitValue', 'trailingStop', 
+                        'takeProfit', 'tpslMode', 'riskId', 'adlRankIndicator', 'positionMM', 'positionIdx', 
+                        'positionIM', 'bustPrice', 'positionBalance', 'stopLoss', 'tradeMode',
+                        'createdTime', 'updatedTime', 'seq']:
+            del item[del_key]
+        if( item['size'] == '0' ):
+            if( symbol_name in jango_info):
+                del jango_info[symbol_name] 
+        else:
+            jango_info[symbol_name] = item
     
 
 
@@ -194,7 +193,7 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
                 category= category,
                 symbol= symbol_name,
                 interval= interval, 
-                limit = 70,
+                limit = 30,
             ))
         if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
             candle_list = result['result']['list']
@@ -327,43 +326,42 @@ def make_place_order_linear(symbol_name: str, maemae_type: str, dollar_amount: s
     requests = []
     request = {}
 
-    if( len(coin_info[symbol_name]['b']) != 0):
-        # 호가가 자주 변하므로 3호가 위 가격으로 매매  
-        price = ''
-        if( maemae_type == "Sell"):
-            price = coin_info[symbol_name]['b'][3][0]
-        else:
-            price = coin_info[symbol_name]['a'][3][0]
-        request['price'] = price
+    price = str(coin_info[symbol_name]['candle'][0]['close']) # 어차피 시장가 갯수 계산용 
 
-        # 최소 주문 단위 
-        qty_step = coin_info[symbol_name]['qty_step']
-        # qty_step 0.001 의 경우 -2 하면 3자리 소수점 됨 
-        qty = str( round( float(dollar_amount) / float(price), len(qty_step) -2 ) )
+    if( maemae_type == "Sell"):
+        request['reduceOnly'] = True # Sell 주문이 Short 으로 나가면 역방향으로 계좌 증가하므로 증가하는 방향은 자제 하게 함 
+    else:
+        request['reduceOnly'] = False
+    request['price'] = price
 
-        request['category'] = 'linear' 
-        request['symbol'] = symbol_name
-        request['orderType'] = 'Market'
-        request['side'] =  maemae_type
-        request['qty'] = qty
+    # 최소 주문 단위 
+    qty_step = coin_info[symbol_name]['qty_step']
+    # qty_step 0.001 의 경우 -2 하면 3자리 소수점 됨 
+    qty = str( round( float(dollar_amount) / float(price), len(qty_step) -2 ) )
 
+    request['category'] = 'linear' 
+    request['symbol'] = symbol_name
+    request['orderType'] = 'Market'
+    request['side'] =  maemae_type
+    request['qty'] = qty
 
 
-        avg_price = ''
-        if( symbol_name in jango_info ):
-            avg_price = jango_info[symbol_name]['avgPrice']
 
-        link_order_id_string = "{}-{}, {}, {}: avg:{} ".format(  
-            symbol_name, 
-            datetime.datetime.now().strftime("%H:%M:%S"), 
-            maemae_type, 
-            price ,
-            avg_price
+    avg_price = ''
+    if( symbol_name in jango_info ):
+        avg_price = jango_info[symbol_name]['avgPrice']
 
-            ) # should be unique string 
+    link_order_id_string = "{}-{}, {}, {}: avg:{} ".format(  
+        symbol_name, 
+        datetime.datetime.now().strftime("%H:%M:%S"), 
+        maemae_type, 
+        price ,
+        avg_price
 
-        request['orderLinkId'] = link_order_id_string
-        requests.append( request )
+        ) # should be unique string 
+
+    request['orderLinkId'] = link_order_id_string
+    requests.append( request )
 
     result = session.place_batch_order(
         category = "linear",
@@ -458,8 +456,6 @@ def determine_buy_and_sell(symbol_name_list: list):
             last_high_price < current_price  
             and symbol_name not in jango_info
         ):
-            # bid 기준 current price
-            current_price = coin_info[symbol_name]['b'][0][0]
             print( '\nbuy  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
             maemae_type = "Buy"
             make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount )
@@ -469,9 +465,7 @@ def determine_buy_and_sell(symbol_name_list: list):
             last_low_price > current_price and symbol_name in jango_info
             ):
             print( '\nsell  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
-            current_price = coin_info[symbol_name]['a'][0][0]
-            # ask 기준 current price
-            # qty = '0' # Sell All
+            # qty = '0' # Sell All Bug
             qty = jango_info[symbol_name]['size']
             maemae_type = 'Sell'
             make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount )
@@ -490,11 +484,17 @@ if __name__ == "__main__":
     log.addHandler( handler ) 
     file_log.addHandler( file_handler )
 
-
     count = 0
-    # symbol_name = "XRPUSDT"
 
-    symbol_name_list = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT', 'BNBUSDT' ]
+    symbol_name_list = [
+                        #'BTCUSDT', 
+                        'ETHUSDT', 
+                        'XRPUSDT', 
+                        'SOLUSDT', 
+                        'BNBUSDT', 
+                        'BLURUSDT', 
+                        'TIAUSDT' 
+                        ]
     interval = '15'
 
     get_instruments_info(category="linear", symbol_name_list= symbol_name_list)
@@ -502,11 +502,10 @@ if __name__ == "__main__":
     while True:
         try:
 
-            get_positions(category="linear", symbol_name_list= symbol_name_list)
-            get_orderbook(category="linear", symbol_name_list= symbol_name_list)
+            get_positions(category="linear", settle_coin= 'USDT')
+            # get_orderbook(category="linear", symbol_name_list= symbol_name_list)
 
             # Kline interval. 1,3,5,15,30,60,120,240,360,720,D,M,W
-            # get_candle(category="linear", symbol_name = symbol_name, interval="D")
             get_candle(category="linear", symbol_name_list = symbol_name_list, interval= interval)
 
             determine_buy_and_sell(symbol_name_list)
