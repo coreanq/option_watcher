@@ -30,12 +30,28 @@ log = logging.getLogger(__name__)
 file_log = logging.getLogger(__name__ + '_file')
 
 jango_info  = {}
-order_book_info = {}
-candle_info = {}
+coin_info = {} # 코인 전반적인 정보로 보유하지 않아도 관련 정보를 가지고 있다 .
 
 event_occur_date_time  = None
 
 server_port_number = 5678
+
+#최소 주문 단위를 얻기 위함 
+def get_instruments_info(category :str, symbol_name_list : list):
+
+    for symbol_name in symbol_name_list:
+        result = (
+            session.get_instruments_info(
+                category= category,
+                symbol= symbol_name
+            ))
+        coin_info[symbol_name] = {}
+        if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
+            instruments_info = result['result']['list'][0]
+            coin_info[symbol_name]['min_qty'] = instruments_info['lotSizeFilter']['minOrderQty']
+            coin_info[symbol_name]['max_qty'] = instruments_info['lotSizeFilter']['maxOrderQty']
+            coin_info[symbol_name]['qty_step'] = instruments_info['lotSizeFilter']['qtyStep']
+
 
 def get_positions(category :str, symbol_name_list :list):
 
@@ -83,16 +99,16 @@ def get_orderbook(category : str, symbol_name_list: list):
             if( 'b' not in result  ):
                 pass
             else:
-                if( symbol_name not in order_book_info):
-                    order_book_info[symbol_name] = {}
-                order_book_info[symbol_name]['b'] = result['b']
-                order_book_info[symbol_name]['a'] = result['a']
+                if( symbol_name not in coin_info):
+                    coin_info[symbol_name] = {}
+                coin_info[symbol_name]['b'] = result['b']
+                coin_info[symbol_name]['a'] = result['a']
 
 
 def caculate_bollinger(symbol_name : str):
     last_price = close_price_list[-1]
-    last_std_upper_value = candle_info[symbol_name]['bol 20, 2 upper'][-1]
-    last_std_lower_value = candle_info[symbol_name]['bol 20, 2 lower'][-1]
+    last_std_upper_value = coin_info[symbol_name]['bol 20, 2 upper'][-1]
+    last_std_lower_value = coin_info[symbol_name]['bol 20, 2 lower'][-1]
 
     close_price_list = [ n[1] for n in jango_info[symbol_name]['candle']  ]
     close_price_list = close_price_list[::-1]
@@ -183,10 +199,10 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
         if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
             candle_list = result['result']['list']
 
-            if( symbol_name not in candle_info ):
-                candle_info[symbol_name] = {}
+            if( symbol_name not in coin_info ):
+                coin_info[symbol_name] = {}
 
-            candle_info[symbol_name]['candle'] = []
+            coin_info[symbol_name]['candle'] = []
             for index, item in enumerate(candle_list):
                 time_stamp  = int( int(item[0]) / 1000)
                 candle_time = datetime.datetime.fromtimestamp(time_stamp).strftime("%y-%m-%d %H:%M:%S")
@@ -195,15 +211,15 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
                 low_price = float( item [3])
                 close_price = float( item[4] )
                 amount = float( item[5])
-                candle_info[symbol_name]['candle'].append( {'time': candle_time, 'open': open_price, 'high': high_price, 'low': low_price, 'close': close_price, 'amount': amount } )
+                coin_info[symbol_name]['candle'].append( {'time': candle_time, 'open': open_price, 'high': high_price, 'low': low_price, 'close': close_price, 'amount': amount } )
 
-        close_price_list = [ n['close'] for n in candle_info[symbol_name]['candle']  ]
+        close_price_list = [ n['close'] for n in coin_info[symbol_name]['candle']  ]
         close_price_list = close_price_list[::-1]
 
-        candle_info[symbol_name]['mean20']  = []
-        candle_info[symbol_name]['bol 20, 2 upper']  = []
-        candle_info[symbol_name]['bol 20, 2 lower']  = []
-        candle_info[symbol_name]['mean5']  = []
+        coin_info[symbol_name]['mean20']  = []
+        coin_info[symbol_name]['bol 20, 2 upper']  = []
+        coin_info[symbol_name]['bol 20, 2 lower']  = []
+        coin_info[symbol_name]['mean5']  = []
         # 20 avr
         for index, item in enumerate( close_price_list  ):
 
@@ -215,22 +231,22 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
                 mean_value = numpy.mean( mean_target_list ) 
                 std_value = numpy.std( mean_target_list ) * 2
 
-                candle_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 3 ) )
-                candle_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
-                candle_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
+                coin_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 3 ) )
+                coin_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
+                coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
             else:
-                candle_info[symbol_name]['mean{}'.format( mean_target )].append(None)
-                candle_info[symbol_name]['bol 20, 2 upper'].append(None)
-                candle_info[symbol_name]['bol 20, 2 lower'].append(None)
+                coin_info[symbol_name]['mean{}'.format( mean_target )].append(None)
+                coin_info[symbol_name]['bol 20, 2 upper'].append(None)
+                coin_info[symbol_name]['bol 20, 2 lower'].append(None)
 
             mean_target = 5
 
             if( index >= mean_target ):
                 mean_target_list =  close_price_list[index - mean_target: index ]
                 mean_value = numpy.mean( mean_target_list ) 
-                candle_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 3 ) )
+                coin_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 3 ) )
             else:
-                candle_info[symbol_name]['mean{}'.format( mean_target )].append( None )
+                coin_info[symbol_name]['mean{}'.format( mean_target )].append( None )
         
 
    
@@ -265,22 +281,6 @@ def calculate_option_pair_profit():
                     file_log.warning( '{}'.format( jango_info[symbol_name] ) )
             file_log.warning( info )
             make_place_order_option( key )
-
-def calculate_profit(symbol_name: str):
-
-    if( symbol_name in jango_info ):
-        current_jango = jango_info[symbol_name]
-
-        info = '{}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
-        log.info(info)
-        # if( value['profit'] > value['pnl value'] * 0.2 ):
-        # # if( True ):
-        #     for symbol_name in jango_info:
-        #         if( key in symbol_name):
-        #             file_log.warning( '{}'.format( jango_info[symbol_name] ) )
-
-        #     file_log.warning( info )
-        #     make_place_order( key )
 
 
 def make_place_order_option(symbol_pair_name: str, maemae_type : str):
@@ -322,25 +322,31 @@ def make_place_order_option(symbol_pair_name: str, maemae_type : str):
         for item in result:
             del jango_info[item['symbol']]
 
-def make_place_order_linear(symbol_name: str, maemae_type: str, qty: str):
+def make_place_order_linear(symbol_name: str, maemae_type: str, dollar_amount: str):
 
     requests = []
     request = {}
 
-    if( len(order_book_info[symbol_name]['b']) != 0):
+    if( len(coin_info[symbol_name]['b']) != 0):
+        # 호가가 자주 변하므로 3호가 위 가격으로 매매  
+        price = ''
+        if( maemae_type == "Sell"):
+            price = coin_info[symbol_name]['b'][3][0]
+        else:
+            price = coin_info[symbol_name]['a'][3][0]
+        request['price'] = price
+
+        # 최소 주문 단위 
+        qty_step = coin_info[symbol_name]['qty_step']
+        # qty_step 0.001 의 경우 -2 하면 3자리 소수점 됨 
+        qty = str( round( float(dollar_amount) / float(price), len(qty_step) -2 ) )
+
         request['category'] = 'linear' 
         request['symbol'] = symbol_name
         request['orderType'] = 'Market'
         request['side'] =  maemae_type
         request['qty'] = qty
 
-        # 호가가 자주 변하므로 3호가 위 가격으로 매매  
-        price = ''
-        if( maemae_type == "Sell"):
-            price = order_book_info[symbol_name]['b'][3][0]
-        else:
-            price = order_book_info[symbol_name]['a'][3][0]
-        request['price'] = price
 
 
         avg_price = ''
@@ -432,8 +438,8 @@ def determine_buy_and_sell(symbol_name_list: list):
         # exclude option
         maemae_type = 'Buy'
 
-        last_candle = candle_info[symbol_name]['candle'][1]
-        current_candle = candle_info[symbol_name]['candle'][0]
+        last_candle = coin_info[symbol_name]['candle'][1]
+        current_candle = coin_info[symbol_name]['candle'][0]
         # print( current_candle )
 
         last_open_price = last_candle['open']
@@ -443,36 +449,32 @@ def determine_buy_and_sell(symbol_name_list: list):
 
         current_price = current_candle['close']
 
-        qty = ''
-        if( 'XRP' in symbol_name):
-            qty = '1'
-        elif( 'ETH' in symbol_name):
-            qty = "0.01"
+        dollar_amount = 50
 
         # 전봉 음봉에 매수 된게 없고 전고가 넘으면 
         if( 
             # True
-            # last_close_price < last_open_price and
+            # last_close_price < last_open_price and   # 전봉이 음봉일때 
             last_high_price < current_price  
             and symbol_name not in jango_info
         ):
             # bid 기준 current price
-            current_price = order_book_info[symbol_name]['b'][0][0]
+            current_price = coin_info[symbol_name]['b'][0][0]
             print( '\nbuy  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
             maemae_type = "Buy"
-            make_place_order_linear( symbol_name, maemae_type, qty )
+            make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount )
             pass
         elif( 
             # True
             last_low_price > current_price and symbol_name in jango_info
             ):
             print( '\nsell  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
-            current_price = order_book_info[symbol_name]['a'][0][0]
+            current_price = coin_info[symbol_name]['a'][0][0]
             # ask 기준 current price
             # qty = '0' # Sell All
             qty = jango_info[symbol_name]['size']
             maemae_type = 'Sell'
-            make_place_order_linear( symbol_name, maemae_type, qty )
+            make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount )
             pass
 
 
@@ -492,18 +494,16 @@ if __name__ == "__main__":
     count = 0
     # symbol_name = "XRPUSDT"
 
-    symbol_name_list = ['ETHUSDT', 'XRPUSDT' ]
+    symbol_name_list = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT', 'BNBUSDT' ]
     interval = '15'
+
+    get_instruments_info(category="linear", symbol_name_list= symbol_name_list)
 
     while True:
         try:
 
             get_positions(category="linear", symbol_name_list= symbol_name_list)
-
-
             get_orderbook(category="linear", symbol_name_list= symbol_name_list)
-            # calculate_linear_profit()
-            # calculate_option_strangle_pair_profit()
 
             # Kline interval. 1,3,5,15,30,60,120,240,360,720,D,M,W
             # get_candle(category="linear", symbol_name = symbol_name, interval="D")
