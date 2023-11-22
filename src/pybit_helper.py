@@ -38,7 +38,7 @@ event_occur_date_time  = None
 server_port_number = 5678
 
 def get_positions(category :str, symbol_name_list :list):
-# 잔고의 경우 팔고 나서 바로 적용되지 않는 문제 있음 
+
     for symbol in symbol_name_list:
         result = (session.get_positions(
             category= category,
@@ -60,8 +60,9 @@ def get_positions(category :str, symbol_name_list :list):
                             'positionIM', 'bustPrice', 'positionBalance', 'stopLoss', 'tradeMode',
                             'createdTime', 'updatedTime', 'seq']:
                 del item[del_key]
-            if( item['size'] == '0' and symbol_name in jango_info):
-                del jango_info[symbol_name] 
+            if( item['size'] == '0' ):
+                if( symbol_name in jango_info):
+                    del jango_info[symbol_name] 
             else:
                 jango_info[symbol_name] = item
     
@@ -426,7 +427,6 @@ def connect_kakao_api():
 
 
 def determine_buy_and_sell(symbol_name_list: list):
-
 
     for symbol_name in symbol_name_list:
         # exclude option
