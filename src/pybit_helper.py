@@ -65,6 +65,7 @@ def get_positions(category :str, settle_coin :str):
     if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
         result = result['result']['list']
 
+    global jango_info
     jango_info = {}
     # 잔고가 복수일수 있음 
     for item in result:
