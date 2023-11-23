@@ -90,7 +90,7 @@ def get_orderbook(category : str, symbol_name_list: list):
         result = (session.get_orderbook(
             category = category,
             symbol= symbol_name,
-            limit = 5 
+            limit = 100
         ))
 
         if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
@@ -326,16 +326,22 @@ def make_place_order_linear(symbol_name: str, maemae_type: str, dollar_amount: s
     request = {}
 
     price = str(coin_info[symbol_name]['candle'][0]['close']) # 어차피 시장가 갯수 계산용 
+    request['price'] = price
 
     if( maemae_type == "Sell"):
         request['reduceOnly'] = True # Sell 주문이 Short 으로 나가면 역방향으로 계좌 증가하므로 증가하는 방향은 자제 하게 함 
+        # 가격은 Limit 를 위해서 25 호가 밖에서 냄
+        # request['price'] = coin_info[symbol_name]['b'][-1][0]
     else:
         request['reduceOnly'] = False
-    request['price'] = price
+        # 가격은 Limit 를 위해서 25 호가 밖에서 냄
+        # request['price'] = coin_info[symbol_name]['a'][-1][0]
+
 
     # 최소 주문 단위 
     qty_step = coin_info[symbol_name]['qty_step']
     # qty_step 0.001 의 경우 -2 하면 3자리 소수점 됨 
+    # 갯수는 마켓 프라이스 기준 
     qty = str( round( float(dollar_amount) / float(price), len(qty_step) -2 ) )
 
     request['category'] = 'linear' 
@@ -344,16 +350,25 @@ def make_place_order_linear(symbol_name: str, maemae_type: str, dollar_amount: s
     request['side'] =  maemae_type
     request['qty'] = qty
 
-    avg_price = ''
+    avg_price = '0'
     if( symbol_name in jango_info ):
         avg_price = jango_info[symbol_name]['avgPrice']
 
-    link_order_id_string = "{}-{}, {}, {}: avg:{} ".format(  
-        symbol_name, 
-        datetime.datetime.now().strftime("%H:%M:%S"), 
+
+    # 0.00055 fee
+    avg_price_fee = float(avg_price)  * 0.00055 
+    price_fee = float(price)  * 0.00055
+
+    profit  = (float(price) - float(avg_price)) * float(qty) - avg_price_fee - price_fee
+
+    link_order_id_string = "{}-{}, profit:{} ".format(  
         maemae_type, 
-        price ,
-        avg_price
+        datetime.datetime.now().strftime("%H:%M:%S"), 
+        # round( float(price), 3) ,
+        # price_fee,
+        # round( float(avg_price), 3) ,
+        # avg_price_fee,
+        round(profit, 3),
 
         ) # should be unique string 
 
@@ -418,9 +433,22 @@ def connect_kakao_api():
 
 def determine_buy_and_sell(symbol_name_list: list):
 
+    requests = []
+
     for symbol_name in symbol_name_list:
         # exclude option
         maemae_type = 'Buy'
+
+        if( 'maesu_wait_time' in coin_info[symbol_name] ):
+            at_time_str = coin_info[symbol_name]['maesu_wait_time']
+            at_time = datetime.datetime.strptime(at_time_str , "%H:%M:%S")
+
+            time_span = datetime.timedelta(minutes=15)
+
+            if( datetime.datetime.now().time() > (at_time + time_span).time() ):
+                del coin_info[symbol_name]['maesu_wait_time']
+            else:
+                continue
 
         last_candle = coin_info[symbol_name]['candle'][1]
         current_candle = coin_info[symbol_name]['candle'][0]
@@ -431,47 +459,57 @@ def determine_buy_and_sell(symbol_name_list: list):
         last_low_price = last_candle['low']
         last_high_price = last_candle['high']
 
-        current_price = current_candle['close']
+        mark_price = 0
+        avg_price = 0
 
+        if(symbol_name in jango_info):
+            mark_price = float(jango_info[symbol_name]['markPrice'])
+            avg_price = float(jango_info[symbol_name]['avgPrice'])
+
+        current_price = current_candle['close']
         dollar_amount = 50
 
-        requests = []
-
-        # 전봉 음봉에 매수 된게 없고 전고가 넘으면 
-        if( 
-            # True
-            # last_close_price < last_open_price and   # 전봉이 음봉일때 
-            last_high_price < current_price  
-            and symbol_name not in jango_info
-        ):
-            print( '\nbuy  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
-            maemae_type = "Buy"
-            requests.append( make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount ) )
-            pass
-        elif( 
-            # True
-            last_low_price > current_price and symbol_name in jango_info
+        if( symbol_name in jango_info ):
+            if( 
+                # True
+                (last_low_price > current_price)
+                or mark_price > avg_price * 1.005
+                ):
+                print( '\nsell  {} last low {}, high {} current {}'.format( symbol_name, last_low_price, last_high_price, current_price) )
+                # qty = '0' # Sell All Bug
+                maemae_type = 'Sell'
+                requests.append( make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount ) )
+        else:
+            # 전봉 음봉에 매수 된게 없고 전고가 넘으면 
+            if( 
+                # True
+                # last_close_price < last_open_price and   # 전봉이 음봉일때 
+                last_high_price < current_price  
             ):
-            print( '\nsell  last low {}, high {} current {}'.format( last_low_price, last_high_price, current_price) )
-            # qty = '0' # Sell All Bug
-            qty = jango_info[symbol_name]['size']
-            maemae_type = 'Sell'
-            requests.append( make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount ) )
+                print( '\nbuy  {} last low {}, high {} current {}'.format( symbol_name, last_low_price, last_high_price, current_price) )
+                maemae_type = "Buy"
+                requests.append( make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount ) )
+                pass
         
-        if( len(requests) ):
-            result = session.place_batch_order(
-                category = "linear",
-                request = requests
-            )
+    if( len(requests) ):
+        result = session.place_batch_order(
+            category = "linear",
+            request = requests
+        )
 
-            if( result['retMsg'] == 'OK' ):
-                result = result['result']['list']
+        if( result['retMsg'] == 'OK' ):
+            result = result['result']['list']
 
-                file_log.warning( json.dumps( result, indent=2 ))
-                print( json.dumps(result, indent=2)  )
-                get_positions(category="linear", settle_coin="USDT")
+            for item in result:
+                # 매도 결과이면 
+                if( 'Sell' in item['orderLinkId'] ):
+                    coin_info[item['symbol']]['maesu_wait_time'] = datetime.datetime.now().strftime("%H:%M:%S")
 
-            pass
+            file_log.warning( json.dumps( result, indent=2 ))
+            print( json.dumps(result, indent=2)  )
+            get_positions(category="linear", settle_coin="USDT")
+
+        pass
 
 
 if __name__ == "__main__":
@@ -489,13 +527,11 @@ if __name__ == "__main__":
     count = 0
 
     symbol_name_list = [
-                        #'BTCUSDT', 
+                        'BTCUSDT', 
                         'ETHUSDT', 
                         'XRPUSDT', 
                         'SOLUSDT', 
                         'BNBUSDT', 
-                        'BLURUSDT', 
-                        'TIAUSDT' 
                         ]
     interval = '15'
 
