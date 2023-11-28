@@ -31,6 +31,7 @@ file_log = logging.getLogger(__name__ + '_file')
 
 jango_info  = {}
 coin_info = {} # 코인 전반적인 정보로 보유하지 않아도 관련 정보를 가지고 있다 .
+interval = 15
 
 event_occur_date_time  = None
 
@@ -194,7 +195,7 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
                 category= category,
                 symbol= symbol_name,
                 interval= interval, 
-                limit = 30,
+                limit = 50,
             ))
         if( result['retMsg'] == "SUCCESS" or result['retMsg'] == 'OK' or result['retMsg'] == "success" ):
             candle_list = result['result']['list']
@@ -220,6 +221,7 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
         coin_info[symbol_name]['bol 20, 2 upper']  = []
         coin_info[symbol_name]['bol 20, 2 lower']  = []
         coin_info[symbol_name]['mean5']  = []
+        coin_info[symbol_name]['is downtrend']  = []
         # 20 avr
         for index, item in enumerate( close_price_list  ):
 
@@ -234,10 +236,16 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
                 coin_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 3 ) )
                 coin_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
                 coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
+                coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
+                if( close_price_list[index] > mean_value ):
+                    coin_info[symbol_name]['is downtrend'].append( False )
+                else:
+                    coin_info[symbol_name]['is downtrend'].append( True )
             else:
                 coin_info[symbol_name]['mean{}'.format( mean_target )].append(None)
                 coin_info[symbol_name]['bol 20, 2 upper'].append(None)
                 coin_info[symbol_name]['bol 20, 2 lower'].append(None)
+                coin_info[symbol_name]['is downtrend'].append( None )
 
             mean_target = 5
 
@@ -328,21 +336,26 @@ def make_place_order_linear(symbol_name: str, maemae_type: str, dollar_amount: s
     price = str(coin_info[symbol_name]['candle'][0]['close']) # 어차피 시장가 갯수 계산용 
     request['price'] = price
 
+    # 최소 주문 단위 
+    qty_step = coin_info[symbol_name]['qty_step']
+    qty = '0'
+
     if( maemae_type == "Sell"):
         request['reduceOnly'] = True # Sell 주문이 Short 으로 나가면 역방향으로 계좌 증가하므로 증가하는 방향은 자제 하게 함 
         # 가격은 Limit 를 위해서 25 호가 밖에서 냄
         # request['price'] = coin_info[symbol_name]['b'][-1][0]
+        # 팔때는 보유 갯수 대입 
+        qty = jango_info[symbol_name]['size']
     else:
         request['reduceOnly'] = False
         # 가격은 Limit 를 위해서 25 호가 밖에서 냄
         # request['price'] = coin_info[symbol_name]['a'][-1][0]
 
+        # qty_step 0.001 의 경우 -2 하면 3자리 소수점 됨 
+        # 갯수는 마켓 프라이스 기준 
+        qty = str( round( float(dollar_amount) / float(price), len(qty_step) -2 ) )
 
-    # 최소 주문 단위 
-    qty_step = coin_info[symbol_name]['qty_step']
-    # qty_step 0.001 의 경우 -2 하면 3자리 소수점 됨 
-    # 갯수는 마켓 프라이스 기준 
-    qty = str( round( float(dollar_amount) / float(price), len(qty_step) -2 ) )
+
 
     request['category'] = 'linear' 
     request['symbol'] = symbol_name
@@ -443,7 +456,7 @@ def determine_buy_and_sell(symbol_name_list: list):
             at_time_str = coin_info[symbol_name]['maesu_wait_time']
             at_time = datetime.datetime.strptime(at_time_str , "%H:%M:%S")
 
-            time_span = datetime.timedelta(minutes=15)
+            time_span = datetime.timedelta(minutes=interval)
 
             if( datetime.datetime.now().time() > (at_time + time_span).time() ):
                 del coin_info[symbol_name]['maesu_wait_time']
@@ -459,32 +472,48 @@ def determine_buy_and_sell(symbol_name_list: list):
         last_low_price = last_candle['low']
         last_high_price = last_candle['high']
 
-        mark_price = 0
-        avg_price = 0
+        bol_20_lower = coin_info[symbol_name]['bol 20, 2 lower'][-1]
+        bol_20_upper = coin_info[symbol_name]['bol 20, 2 upper'][-1]
+        mean_20 = coin_info[symbol_name]['mean20'][-1]
 
-        if(symbol_name in jango_info):
-            mark_price = float(jango_info[symbol_name]['markPrice'])
-            avg_price = float(jango_info[symbol_name]['avgPrice'])
+        # 종가가 20평균아래 20봉 이상 유지되는 경우 하락 추세로 판단
+        is_down_trend = True
+        down_trend_list = coin_info[symbol_name]['is downtrend']
+
+        # 뒤에서 20봉만 확인 
+        down_trend_list = down_trend_list[len(down_trend_list) - 30 : ]
+
+        if( False in down_trend_list ):
+            is_down_trend = False
+        else: 
+            is_down_trend = True
+            pass
 
         current_price = current_candle['close']
-        dollar_amount = 50
+        dollar_amount = 100
 
         if( symbol_name in jango_info ):
+            #Sell
             if( 
                 # True
-                (last_low_price > current_price)
-                or mark_price > avg_price * 1.005
+                (
+                (mean_20 < current_price) 
+                # and last_low_price > current_price 
+                )
+                or is_down_trend == True
+
                 ):
                 print( '\nsell  {} last low {}, high {} current {}'.format( symbol_name, last_low_price, last_high_price, current_price) )
                 # qty = '0' # Sell All Bug
                 maemae_type = 'Sell'
                 requests.append( make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount ) )
         else:
-            # 전봉 음봉에 매수 된게 없고 전고가 넘으면 
+            # Buy
             if( 
                 # True
-                # last_close_price < last_open_price and   # 전봉이 음봉일때 
-                last_high_price < current_price  
+                (bol_20_lower > current_price) and
+                is_down_trend == False
+                # last_high_price < current_price  
             ):
                 print( '\nbuy  {} last low {}, high {} current {}'.format( symbol_name, last_low_price, last_high_price, current_price) )
                 maemae_type = "Buy"
@@ -532,8 +561,8 @@ if __name__ == "__main__":
                         'XRPUSDT', 
                         'SOLUSDT', 
                         'BNBUSDT', 
+                        'GALAUSDT'
                         ]
-    interval = '15'
 
     get_instruments_info(category="linear", symbol_name_list= symbol_name_list)
     get_positions(category="linear", settle_coin= 'USDT')
@@ -545,7 +574,7 @@ if __name__ == "__main__":
             # get_orderbook(category="linear", symbol_name_list= symbol_name_list)
 
             # Kline interval. 1,3,5,15,30,60,120,240,360,720,D,M,W
-            get_candle(category="linear", symbol_name_list = symbol_name_list, interval= interval)
+            get_candle(category="linear", symbol_name_list = symbol_name_list, interval= str(interval) )
 
             determine_buy_and_sell(symbol_name_list)
 
