@@ -222,6 +222,8 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
         coin_info[symbol_name]['bol 20, 2 lower']  = []
         coin_info[symbol_name]['mean5']  = []
         coin_info[symbol_name]['is downtrend']  = []
+        coin_info[symbol_name]['is bol lower']  = []
+        coin_info[symbol_name]['is bol upper']  = []
         # 20 avr
         for index, item in enumerate( close_price_list  ):
 
@@ -237,15 +239,28 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
                 coin_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
                 coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
                 coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
+
                 if( close_price_list[index] > mean_value ):
                     coin_info[symbol_name]['is downtrend'].append( False )
                 else:
                     coin_info[symbol_name]['is downtrend'].append( True )
+
+                if( close_price_list[index] > (mean_value + std_value) ):
+                    coin_info[symbol_name]['is bol upper'].append( True )
+                else:
+                    coin_info[symbol_name]['is bol upper'].append( False )
+
+                if( close_price_list[index] < (mean_value - std_value ) ):
+                    coin_info[symbol_name]['is bol lower'].append( True )
+                else:
+                    coin_info[symbol_name]['is bol lower'].append( False )
             else:
                 coin_info[symbol_name]['mean{}'.format( mean_target )].append(None)
                 coin_info[symbol_name]['bol 20, 2 upper'].append(None)
                 coin_info[symbol_name]['bol 20, 2 lower'].append(None)
                 coin_info[symbol_name]['is downtrend'].append( None )
+                coin_info[symbol_name]['is bol upper'].append( None )
+                coin_info[symbol_name]['is bol lower'].append( None )
 
             mean_target = 5
 
@@ -472,22 +487,11 @@ def determine_buy_and_sell(symbol_name_list: list):
         last_low_price = last_candle['low']
         last_high_price = last_candle['high']
 
-        bol_20_lower = coin_info[symbol_name]['bol 20, 2 lower'][-1]
-        bol_20_upper = coin_info[symbol_name]['bol 20, 2 upper'][-1]
+        is_bol_20_lower = coin_info[symbol_name]['is bol lower'][-1]
+        is_bol_20_upper = coin_info[symbol_name]['is bol upper'][-1]
+        last_downtrend_list = coin_info[symbol_name]['is downtrend'][ len( coin_info[symbol_name]['is downtrend']) - 5]
         mean_20 = coin_info[symbol_name]['mean20'][-1]
 
-        # 종가가 20평균아래 20봉 이상 유지되는 경우 하락 추세로 판단
-        is_down_trend = True
-        down_trend_list = coin_info[symbol_name]['is downtrend']
-
-        # 뒤에서 20봉만 확인 
-        down_trend_list = down_trend_list[len(down_trend_list) - 30 : ]
-
-        if( False in down_trend_list ):
-            is_down_trend = False
-        else: 
-            is_down_trend = True
-            pass
 
         current_price = current_candle['close']
         dollar_amount = 100
@@ -496,11 +500,9 @@ def determine_buy_and_sell(symbol_name_list: list):
             #Sell
             if( 
                 # True
-                (
                 (mean_20 < current_price) 
-                # and last_low_price > current_price 
-                )
-                or is_down_trend == True
+                # cosequtive 3 True
+                or ( all (coin_info[symbol_name]['is bol lower'][ len(coin_info[symbol_name]['is bol lower']) -3: ] ) )
 
                 ):
                 print( '\nsell  {} last low {}, high {} current {}'.format( symbol_name, last_low_price, last_high_price, current_price) )
@@ -509,10 +511,13 @@ def determine_buy_and_sell(symbol_name_list: list):
                 requests.append( make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount ) )
         else:
             # Buy
+            # not buying on downtrend
             if( 
                 # True
-                (bol_20_lower > current_price) and
-                is_down_trend == False
+                (is_bol_20_lower == True)  
+                and (not all(last_downtrend_list) )
+                and ( not all ( coin_info[symbol_name]['is bol lower'][ len(coin_info[symbol_name]['is bol lower']) -3: ] ) )
+
                 # last_high_price < current_price  
             ):
                 print( '\nbuy  {} last low {}, high {} current {}'.format( symbol_name, last_low_price, last_high_price, current_price) )
