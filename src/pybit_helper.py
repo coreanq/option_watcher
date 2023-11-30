@@ -222,6 +222,7 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
         coin_info[symbol_name]['bol 20, 2 lower']  = []
         coin_info[symbol_name]['mean5']  = []
         coin_info[symbol_name]['is downtrend']  = []
+        coin_info[symbol_name]['is uptrend']  = []
         coin_info[symbol_name]['is bol lower']  = []
         coin_info[symbol_name]['is bol upper']  = []
         # 20 avr
@@ -242,8 +243,10 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
 
                 if( close_price_list[index] > mean_value ):
                     coin_info[symbol_name]['is downtrend'].append( False )
+                    coin_info[symbol_name]['is uptrend'].append( True )
                 else:
                     coin_info[symbol_name]['is downtrend'].append( True )
+                    coin_info[symbol_name]['is uptrend'].append( False )
 
                 if( close_price_list[index] > (mean_value + std_value) ):
                     coin_info[symbol_name]['is bol upper'].append( True )
@@ -259,6 +262,7 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
                 coin_info[symbol_name]['bol 20, 2 upper'].append(None)
                 coin_info[symbol_name]['bol 20, 2 lower'].append(None)
                 coin_info[symbol_name]['is downtrend'].append( None )
+                coin_info[symbol_name]['is uptrend'].append( None )
                 coin_info[symbol_name]['is bol upper'].append( None )
                 coin_info[symbol_name]['is bol lower'].append( None )
 
@@ -345,63 +349,6 @@ def make_place_order_option(symbol_pair_name: str, maemae_type : str):
         for item in result:
             del jango_info[item['symbol']]
 
-def make_place_order_linear(symbol_name: str, maemae_type: str, dollar_amount: str)-> list:
-    request = {}
-
-    price = str(coin_info[symbol_name]['candle'][0]['close']) # 어차피 시장가 갯수 계산용 
-    request['price'] = price
-
-    # 최소 주문 단위 
-    qty_step = coin_info[symbol_name]['qty_step']
-    qty = '0'
-
-    if( maemae_type == "Sell"):
-        request['reduceOnly'] = True # Sell 주문이 Short 으로 나가면 역방향으로 계좌 증가하므로 증가하는 방향은 자제 하게 함 
-        # 가격은 Limit 를 위해서 25 호가 밖에서 냄
-        # request['price'] = coin_info[symbol_name]['b'][-1][0]
-        # 팔때는 보유 갯수 대입 
-        qty = jango_info[symbol_name]['size']
-    else:
-        request['reduceOnly'] = False
-        # 가격은 Limit 를 위해서 25 호가 밖에서 냄
-        # request['price'] = coin_info[symbol_name]['a'][-1][0]
-
-        # qty_step 0.001 의 경우 -2 하면 3자리 소수점 됨 
-        # 갯수는 마켓 프라이스 기준 
-        qty = str( round( float(dollar_amount) / float(price), len(qty_step) -2 ) )
-
-
-
-    request['category'] = 'linear' 
-    request['symbol'] = symbol_name
-    request['orderType'] = 'Market'
-    request['side'] =  maemae_type
-    request['qty'] = qty
-
-    avg_price = '0'
-    if( symbol_name in jango_info ):
-        avg_price = jango_info[symbol_name]['avgPrice']
-
-
-    # 0.00055 fee
-    avg_price_fee = float(avg_price)  * 0.00055 
-    price_fee = float(price)  * 0.00055
-
-    profit  = (float(price) - float(avg_price)) * float(qty) - avg_price_fee - price_fee
-
-    link_order_id_string = "{}-{}, profit:{} ".format(  
-        maemae_type, 
-        datetime.datetime.now().strftime("%H:%M:%S"), 
-        # round( float(price), 3) ,
-        # price_fee,
-        # round( float(avg_price), 3) ,
-        # avg_price_fee,
-        round(profit, 3),
-
-        ) # should be unique string 
-
-    request['orderLinkId'] = link_order_id_string
-    return request
 
 
 # kakao 에 로그인 하여 access 토큰을 얻어야 함 
@@ -459,14 +406,57 @@ def connect_kakao_api():
     MSG.send_text(text=text, link={}, button_title=button_title)
 
 
+def make_place_order_linear(symbol_name: str, maemae_side: str, qty: str, reduced_only : bool = True)-> list:
+    request = {}
+
+    price = str(coin_info[symbol_name]['candle'][0]['close']) # 어차피 시장가 갯수 계산용 
+    request['price'] = price
+
+    request['reduceOnly'] = reduced_only # Sell 주문이 Short 으로 나가면 역방향으로 계좌 증가하므로 증가하는 방향은 자제 하게 함 
+    request['category'] = 'linear' 
+    request['symbol'] = symbol_name
+    request['orderType'] = 'Market'
+    request['side'] =  maemae_side
+    request['qty'] = qty
+
+    avg_price = '0'
+    if( symbol_name in jango_info ):
+        avg_price = jango_info[symbol_name]['avgPrice']
+
+
+    # 0.00055 fee
+    avg_price_fee = float(avg_price)  * 0.00055 
+    price_fee = float(price)  * 0.00055
+
+    profit  = (float(price) - float(avg_price)) * float(qty) - avg_price_fee - price_fee
+
+    position_type = ''
+    if( symbol_name in jango_info ):
+        position_type = "Close"
+    else:
+        position_type = "Open"
+
+    link_order_id_string = "{}({})-{}, profit:{} ".format(  
+        position_type, 
+        qty,
+        datetime.datetime.now().strftime("%H:%M:%S"), 
+        # round( float(price), 3) ,
+        # price_fee,
+        # round( float(avg_price), 3) ,
+        # avg_price_fee,
+        round(profit, 3),
+
+        ) # should be unique string 
+
+    request['orderLinkId'] = link_order_id_string
+    return request
 def determine_buy_and_sell(symbol_name_list: list):
 
     requests = []
+    maemae_side = 'Buy'
 
     for symbol_name in symbol_name_list:
         # exclude option
-        maemae_type = 'Buy'
-
         if( 'maesu_wait_time' in coin_info[symbol_name] ):
             at_time_str = coin_info[symbol_name]['maesu_wait_time']
             at_time = datetime.datetime.strptime(at_time_str , "%H:%M:%S")
@@ -489,40 +479,80 @@ def determine_buy_and_sell(symbol_name_list: list):
 
         is_bol_20_lower = coin_info[symbol_name]['is bol lower'][-1]
         is_bol_20_upper = coin_info[symbol_name]['is bol upper'][-1]
-        last_downtrend_list = coin_info[symbol_name]['is downtrend'][ len( coin_info[symbol_name]['is downtrend']) - 5]
+        last_downtrend_list = coin_info[symbol_name]['is downtrend'][ len( coin_info[symbol_name]['is downtrend']) - 5:]
+        last_uptrend_list = coin_info[symbol_name]['is uptrend'][ len( coin_info[symbol_name]['is uptrend']) - 5:]
         mean_20 = coin_info[symbol_name]['mean20'][-1]
 
 
         current_price = current_candle['close']
         dollar_amount = 100
+        qty_step = coin_info[symbol_name]['qty_step']
 
         if( symbol_name in jango_info ):
-            #Sell
-            if( 
-                # True
-                (mean_20 < current_price) 
-                # cosequtive 3 True
-                or ( all (coin_info[symbol_name]['is bol lower'][ len(coin_info[symbol_name]['is bol lower']) -3: ] ) )
+            # Position Close
 
-                ):
-                print( '\nsell  {} last low {}, high {} current {}'.format( symbol_name, last_low_price, last_high_price, current_price) )
-                # qty = '0' # Sell All Bug
-                maemae_type = 'Sell'
-                requests.append( make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount ) )
+            maemae_side = jango_info[symbol_name]['side']
+            if( maemae_side == 'Buy'):
+                #Long Side
+                if( 
+                    # True
+                    (mean_20 < current_price) 
+                    # cosequtive 3 True
+                    or ( all (coin_info[symbol_name]['is bol lower'][ len(coin_info[symbol_name]['is bol lower']) -3: ] ) )
+
+                    ):
+                    print( '\nClose Long, {}, current:{}'.format( symbol_name, current_price) )
+                    # qty = '0' # Close All Bug
+
+                    # close 하기 위해서 반대 사이드로 같은 양을 주문을 내보낸다 
+                    maemae_side = 'Sell'
+                    qty = jango_info[symbol_name]['size']
+
+                    requests.append( make_place_order_linear( symbol_name, maemae_side, qty=qty, reduced_only=True ) )
+            else:
+                # Short Side
+                if(
+                    # True
+                    (mean_20 > current_price) 
+                    # cosequtive 3 True
+                    or ( all (coin_info[symbol_name]['is bol upper'][ len(coin_info[symbol_name]['is bol upper']) -3: ] ) )
+
+                    ):
+                    print( '\nClose Short, {}, current:{}'.format( symbol_name, current_price) )
+                    # qty = '0' # Close All Bug
+
+                    # close 하기 위해서 반대 사이드로 같은 양을 주문을 내보낸다 
+                    maemae_side = 'Buy'
+                    qty = jango_info[symbol_name]['size']
+
+                    requests.append( make_place_order_linear( symbol_name, maemae_side, qty=qty, reduced_only=True ) )
         else:
-            # Buy
-            # not buying on downtrend
+            # Position Open
             if( 
                 # True
                 (is_bol_20_lower == True)  
                 and (not all(last_downtrend_list) )
-                and ( not all ( coin_info[symbol_name]['is bol lower'][ len(coin_info[symbol_name]['is bol lower']) -3: ] ) )
-
-                # last_high_price < current_price  
             ):
-                print( '\nbuy  {} last low {}, high {} current {}'.format( symbol_name, last_low_price, last_high_price, current_price) )
-                maemae_type = "Buy"
-                requests.append( make_place_order_linear( symbol_name, maemae_type, dollar_amount=dollar_amount ) )
+                # Long Side
+                print( '\nOpen Long  {} current {}'.format( symbol_name,  current_price) )
+                maemae_side = "Buy"
+
+                # qty_step 0.001  0.1 string 을 제외하면 round 뒷자리 인수가 됨
+                qty = str( round( float(dollar_amount) / float(current_price), len(qty_step) -2 ) )
+                requests.append( make_place_order_linear( symbol_name, maemae_side, qty=qty, reduced_only=False) )
+                pass
+            elif( 
+                # True
+                (is_bol_20_upper == True)  
+                and (not all(last_uptrend_list) )
+            ):
+                # Short Side
+                print( '\nOpen Short {} current {}'.format( symbol_name, current_price) )
+                maemae_side = "Sell"
+
+                # qty_step 0.001  0.1 string 을 제외하면 round 뒷자리 인수가 됨
+                qty = str( round( float(dollar_amount) / float(current_price), len(qty_step) -2 ) )
+                requests.append( make_place_order_linear( symbol_name, maemae_side, qty=qty, reduced_only=False) )
                 pass
         
     if( len(requests) ):
@@ -536,7 +566,7 @@ def determine_buy_and_sell(symbol_name_list: list):
 
             for item in result:
                 # 매도 결과이면 
-                if( 'Sell' in item['orderLinkId'] ):
+                if( 'Close' in item['orderLinkId'] ):
                     coin_info[item['symbol']]['maesu_wait_time'] = datetime.datetime.now().strftime("%H:%M:%S")
 
             file_log.warning( json.dumps( result, indent=2 ))
