@@ -106,86 +106,6 @@ def get_orderbook(category : str, symbol_name_list: list):
                 coin_info[symbol_name]['a'] = result['a']
 
 
-def caculate_bollinger(symbol_name : str):
-    last_price = close_price_list[-1]
-    last_std_upper_value = coin_info[symbol_name]['bol 20, 2 upper'][-1]
-    last_std_lower_value = coin_info[symbol_name]['bol 20, 2 lower'][-1]
-
-    close_price_list = [ n[1] for n in jango_info[symbol_name]['candle']  ]
-    close_price_list = close_price_list[::-1]
-
-    jango_info[symbol_name]['mean20']  = []
-    jango_info[symbol_name]['bol 20, 2 upper']  = []
-    jango_info[symbol_name]['bol 20, 2 lower']  = []
-    jango_info[symbol_name]['mean5']  = []
-    # 20 avr
-    for index, item in enumerate( close_price_list  ):
-
-        mean_target = 20 
-
-        if( index >= mean_target ):
-            mean_target_list =  close_price_list[index - mean_target: index ]
-
-            mean_value = numpy.mean( mean_target_list ) 
-            std_value = numpy.std( mean_target_list ) * 2
-
-            jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 3 ) )
-            jango_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
-            jango_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
-        else:
-            jango_info[symbol_name]['mean{}'.format( mean_target )].append(None)
-            jango_info[symbol_name]['bol 20, 2 upper'].append(None)
-            jango_info[symbol_name]['bol 20, 2 lower'].append(None)
-
-        mean_target = 5
-
-        if( index >= mean_target ):
-            mean_target_list =  close_price_list[index - mean_target: index ]
-            mean_value = numpy.mean( mean_target_list ) 
-            jango_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 3 ) )
-        else:
-            jango_info[symbol_name]['mean{}'.format( mean_target )].append( None )
-        
-    last_price = close_price_list[-1]
-    last_std_upper_value = jango_info[symbol_name]['bol 20, 2 upper'][-1]
-    last_std_lower_value = jango_info[symbol_name]['bol 20, 2 lower'][-1]
-
-    current_time = datetime.datetime.now()
-    diff_time = datetime.timedelta(hours=1)
-
-    global event_occur_date_time
-
-    if( last_price > last_std_upper_value ):
-        text = "ETHUSDT 볼린저 밴드 상단 돌파"
-        button_title = "바로 확인"
-
-        if( event_occur_date_time == None ):
-            MSG.send_text(text=text, link={}, button_title=button_title)
-            event_occur_date_time = datetime.datetime.now()
-
-        elif( event_occur_date_time + diff_time < current_time ):
-            MSG.send_text(text=text, link={}, button_title=button_title)
-            event_occur_date_time = datetime.datetime.now()
-
-        print( 'bol upper cross')
-
-    elif( last_price < last_std_lower_value ):
-        text = "ETHUSDT 볼린저 밴드 하단 돌파"
-        button_title = "바로 확인"
-
-        if( event_occur_date_time == None ):
-            MSG.send_text(text=text, link={}, button_title=button_title)
-            event_occur_date_time = datetime.datetime.now()
-
-        elif( event_occur_date_time + diff_time < current_time ):
-            MSG.send_text(text=text, link={}, button_title=button_title)
-            event_occur_date_time = datetime.datetime.now()
-
-        print( 'bol lower cross')
-
-        pass
-
-
 # 20봉/ 5봉 평균 추가 
 def get_candle(category :str, symbol_name_list : [], interval : str):
 
@@ -236,10 +156,10 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
                 mean_value = numpy.mean( mean_target_list ) 
                 std_value = numpy.std( mean_target_list ) * 2
 
-                coin_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 3 ) )
-                coin_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 3 ) )
-                coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
-                coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 3 ) )
+                coin_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 5 ) )
+                coin_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 5 ) )
+                coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 5 ) )
+                coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 5 ) )
 
                 if( close_price_list[index] > mean_value ):
                     coin_info[symbol_name]['is downtrend'].append( False )
@@ -271,7 +191,7 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
             if( index >= mean_target ):
                 mean_target_list =  close_price_list[index - mean_target: index ]
                 mean_value = numpy.mean( mean_target_list ) 
-                coin_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 3 ) )
+                coin_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 5 ) )
             else:
                 coin_info[symbol_name]['mean{}'.format( mean_target )].append( None )
         
@@ -440,11 +360,7 @@ def make_place_order_linear(symbol_name: str, maemae_side: str, qty: str, reduce
         position_type, 
         qty,
         datetime.datetime.now().strftime("%H:%M:%S"), 
-        # round( float(price), 3) ,
-        # price_fee,
-        # round( float(avg_price), 3) ,
-        # avg_price_fee,
-        round(profit, 3),
+        round(profit, 5),
 
         ) # should be unique string 
 
