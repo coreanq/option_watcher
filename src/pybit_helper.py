@@ -4,27 +4,18 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import ssl, socketserver
 
 from pybit.unified_trading import HTTP
-import json,datetime, time, logging, datetime, numpy
+import sys, json,datetime, time, logging, datetime, numpy
 
 api_key = ''
 api_secret = ''
 kakao_rest_api_key = ''
 kakao_redirect_url = ''
+dollar_amount = 100
 
-with open('auth/auth_info.json') as f:
-    auth_info = json.load(f)
-    api_key = auth_info['api_key']
-    api_secret = auth_info['api_secret']
-    kakao_rest_api_key = auth_info.get('kakao_rest_api_key', '')
 
 # 메시지 API 인스턴스 생성
 MSG = Message(service_key = kakao_rest_api_key )
 
-session = HTTP(
-    testnet=False,
-    api_key= api_key,
-    api_secret= api_secret
-)
 
 log = logging.getLogger(__name__)
 file_log = logging.getLogger(__name__ + '_file')
@@ -156,10 +147,10 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
                 mean_value = numpy.mean( mean_target_list ) 
                 std_value = numpy.std( mean_target_list ) * 2
 
-                coin_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 5 ) )
-                coin_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 5 ) )
-                coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 5 ) )
-                coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 5 ) )
+                coin_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value , 6 ) )
+                coin_info[symbol_name]['bol 20, 2 upper'].append( round( mean_value + std_value , 6 ) )
+                coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 6 ) )
+                coin_info[symbol_name]['bol 20, 2 lower'].append( round( mean_value  - std_value , 6 ) )
 
                 if( close_price_list[index] > mean_value ):
                     coin_info[symbol_name]['is downtrend'].append( False )
@@ -191,7 +182,7 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
             if( index >= mean_target ):
                 mean_target_list =  close_price_list[index - mean_target: index ]
                 mean_value = numpy.mean( mean_target_list ) 
-                coin_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 5 ) )
+                coin_info[symbol_name]['mean{}'.format( mean_target )].append( round( mean_value, 6 ) )
             else:
                 coin_info[symbol_name]['mean{}'.format( mean_target )].append( None )
         
@@ -216,8 +207,8 @@ def calculate_option_pair_profit():
             total_profit[symbol_pair_name]['pnl value'] = 0
 
 
-        total_profit[symbol_pair_name]['profit'] = round( total_profit[symbol_pair_name]['profit'] + value['profit'], 2)
-        total_profit[symbol_pair_name]['pnl value'] = round( total_profit[symbol_pair_name]['pnl value'] + value['pnl value'], 2)
+        total_profit[symbol_pair_name]['profit'] = round( total_profit[symbol_pair_name]['profit'] + value['profit'], 6)
+        total_profit[symbol_pair_name]['pnl value'] = round( total_profit[symbol_pair_name]['pnl value'] + value['pnl value'], 6)
 
     for key, value in total_profit.items():
         info = '{:>10}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
@@ -356,11 +347,11 @@ def make_place_order_linear(symbol_name: str, maemae_side: str, qty: str, reduce
     else:
         position_type = "Open"
 
-    link_order_id_string = "{}({})-{}, profit:{} ".format(  
-        position_type, 
+    link_order_id_string = "{} {}({})-{}, profit:{} ".format(  
+        position_type, maemae_side, 
         qty,
         datetime.datetime.now().strftime("%H:%M:%S"), 
-        round(profit, 5),
+        round(profit, 6),
 
         ) # should be unique string 
 
@@ -377,7 +368,7 @@ def determine_buy_and_sell(symbol_name_list: list):
             at_time_str = coin_info[symbol_name]['maesu_wait_time']
             at_time = datetime.datetime.strptime(at_time_str , "%H:%M:%S")
 
-            time_span = datetime.timedelta(minutes=interval)
+            time_span = datetime.timedelta(minutes=interval * 2)
 
             if( datetime.datetime.now().time() > (at_time + time_span).time() ):
                 del coin_info[symbol_name]['maesu_wait_time']
@@ -401,7 +392,6 @@ def determine_buy_and_sell(symbol_name_list: list):
 
 
         current_price = current_candle['close']
-        dollar_amount = 100
         qty_step = coin_info[symbol_name]['qty_step']
 
         if( symbol_name in jango_info ):
@@ -458,7 +448,7 @@ def determine_buy_and_sell(symbol_name_list: list):
                 requests.append( make_place_order_linear( symbol_name, maemae_side, qty=qty, reduced_only=False) )
                 pass
             elif( 
-                # True
+                # False and
                 (is_bol_20_upper == True)  
                 and (not all(last_uptrend_list) )
             ):
@@ -504,6 +494,26 @@ if __name__ == "__main__":
     log.addHandler( handler ) 
     file_log.addHandler( file_handler )
 
+    arg = ''
+    if( len(sys.argv) > 1):
+        arg = sys.argv[1]
+    with open('auth/auth_info{}.json'.format( arg )) as f:
+        auth_info = json.load(f)
+        api_key = auth_info['api_key']
+        api_secret = auth_info['api_secret']
+        kakao_rest_api_key = auth_info.get('kakao_rest_api_key', '')
+
+    session = HTTP(
+        testnet=False,
+        api_key= api_key,
+        api_secret= api_secret
+    )
+
+    if( arg == ''):
+        dollar_amount = 100
+    else:
+        dollar_amount = 1000
+
     count = 0
 
     symbol_name_list = [
@@ -511,8 +521,10 @@ if __name__ == "__main__":
                         'ETHUSDT', 
                         'XRPUSDT', 
                         'SOLUSDT', 
-                        'BNBUSDT', 
-                        'GALAUSDT'
+                        # 'BNBUSDT', 
+                        'GALAUSDT',
+                        'DOGEUSDT',
+                        'IOTAUSDT'
                         ]
 
     get_instruments_info(category="linear", symbol_name_list= symbol_name_list)
@@ -520,10 +532,6 @@ if __name__ == "__main__":
 
     while True:
         try:
-
-            # get_positions(category="linear", settle_coin= 'USDT')
-            # get_orderbook(category="linear", symbol_name_list= symbol_name_list)
-
             # Kline interval. 1,3,5,15,30,60,120,240,360,720,D,M,W
             get_candle(category="linear", symbol_name_list = symbol_name_list, interval= str(interval) )
 
@@ -534,8 +542,6 @@ if __name__ == "__main__":
             print("-", end='')
         except Exception as e:
             print("except {}".format( e ))
-            time.sleep(5)
-
-
+            time.sleep(3)
 
     pass
