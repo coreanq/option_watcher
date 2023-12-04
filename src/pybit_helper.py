@@ -361,6 +361,7 @@ def determine_buy_and_sell(symbol_name_list: list):
 
     requests = []
     maemae_side = 'Buy'
+    position_type = ""
 
     for symbol_name in symbol_name_list:
         # exclude option
@@ -396,6 +397,7 @@ def determine_buy_and_sell(symbol_name_list: list):
 
         if( symbol_name in jango_info ):
             # Position Close
+            position_type = "Close"
 
             maemae_side = jango_info[symbol_name]['side']
             if( maemae_side == 'Buy'):
@@ -434,6 +436,7 @@ def determine_buy_and_sell(symbol_name_list: list):
                     requests.append( make_place_order_linear( symbol_name, maemae_side, qty=qty, reduced_only=True ) )
         else:
             # Position Open
+            position_type = "Open"
             if( 
                 # True
                 (is_bol_20_lower == True)  
@@ -478,6 +481,15 @@ def determine_buy_and_sell(symbol_name_list: list):
             file_log.warning( json.dumps( result, indent=2 ))
             print( json.dumps(result, indent=2)  )
             get_positions(category="linear", settle_coin="USDT")
+        else:
+            print(result)
+
+            # Close 무응답인 경우도 무한 매수 매도를 방지 하기 위한 코드 
+            if( position_type == "Close"):
+                # 매도 결과이면 
+                for key, value in coin_info.items():
+                    coin_info[key]['maesu_wait_time'] = datetime.datetime.now().strftime("%H:%M:%S")
+                pass
 
         pass
 
@@ -512,7 +524,7 @@ if __name__ == "__main__":
     if( arg == ''):
         dollar_amount = 100
     else:
-        dollar_amount = 1000
+        dollar_amount = 100
 
     count = 0
 
@@ -520,11 +532,7 @@ if __name__ == "__main__":
                         'BTCUSDT', 
                         'ETHUSDT', 
                         'XRPUSDT', 
-                        'SOLUSDT', 
-                        # 'BNBUSDT', 
-                        'GALAUSDT',
-                        'DOGEUSDT',
-                        'IOTAUSDT'
+                        'SOLUSDT' 
                         ]
 
     get_instruments_info(category="linear", symbol_name_list= symbol_name_list)
