@@ -98,7 +98,7 @@ def get_orderbook(category : str, symbol_name_list: list):
 
 
 # 20봉/ 5봉 평균 추가 
-def get_candle(category :str, symbol_name_list : [], interval : str):
+def get_candle(category :str, symbol_name_list : list, interval : str):
 
     for symbol_name in symbol_name_list:
         result = (
@@ -191,11 +191,21 @@ def get_candle(category :str, symbol_name_list : [], interval : str):
 
 
 
+def get_symbol_name_list() -> list:
+    symbol_name_list = []
+    jango_keys = jango_info.keys()
+
+    return jango_keys
+
+
+
 
 def calculate_option_pair_profit():
     total_profit = {}
 
     for key, value in jango_info.items():
+
+        # option symbol 명 아닌경우 걸러냄 
         if( '-' not in key ):
             break
         if( '-P' not in key and '-C' not in key ):
@@ -206,14 +216,15 @@ def calculate_option_pair_profit():
             total_profit[symbol_pair_name]['profit'] = 0
             total_profit[symbol_pair_name]['pnl value'] = 0
 
-
         total_profit[symbol_pair_name]['profit'] = round( total_profit[symbol_pair_name]['profit'] + value['profit'], 6)
         total_profit[symbol_pair_name]['pnl value'] = round( total_profit[symbol_pair_name]['pnl value'] + value['pnl value'], 6)
 
     for key, value in total_profit.items():
         info = '{:>10}, profit: {:>20},  pnl: {:<30}'.format(key, value['profit'], value['pnl value']) 
         log.info(info)
-        if( value['profit'] > value['pnl value'] * 0.02 ):
+
+        # 전체 투자 금액 대비 수익이 얼마나 나면 팔건지 결정 
+        if( value['profit'] > value['pnl value'] * 0.10 ): # 10%
             for symbol_name in jango_info:
                 if( key in symbol_name):
                     file_log.warning( '{}'.format( jango_info[symbol_name] ) )
@@ -494,6 +505,78 @@ def determine_buy_and_sell(symbol_name_list: list):
         pass
 
 
+def processLinear():
+
+    count = 0
+
+    symbol_name_list = [
+                        'BTCUSDT', 
+                        'ETHUSDT', 
+                        'XRPUSDT', 
+                        'SOLUSDT' 
+                        ]
+
+    get_instruments_info(category="linear", symbol_name_list= symbol_name_list)
+    get_positions(category="linear", settle_coin= 'USDT')
+
+    while True:
+        try:
+            # for linear
+            # Kline interval. 1,3,5,15,30,60,120,240,360,720,D,M,W
+            get_candle(category="linear", symbol_name_list = symbol_name_list, interval= str(interval) )
+            determine_buy_and_sell(symbol_name_list)
+            time.sleep(0.1)
+            count = count + 1
+            print("-", end='')
+        except Exception as e:
+            print("except {}".format( e ))
+            time.sleep(3)
+
+def processOption():
+
+    get_positions(category="option", settle_coin= 'USDC')
+    symbol_name_list = list( get_symbol_name_list() )
+
+    while True:
+        try:
+            # for option
+            get_orderbook(category="option", symbol_name_list=symbol_name_list)
+
+            for symbol_name in symbol_name_list:
+                bid_list = coin_info[symbol_name]['b']
+
+                current_price = 0 
+                current_size = float(jango_info[symbol_name]['size'])
+                # check size and bid_list amount             
+                bid_total_amount = 0
+                current_price = 0
+                for item in bid_list:
+                    bid_total_amount += float(item[1])
+
+                    # 보유 수량에 따라 bid 수량을 검색해 최적으로 팔수 있는 가격을 찾아냄 
+                    if( current_size < bid_total_amount ):
+                        current_price = float(item[0])
+                        break
+
+                original_price = float( jango_info[symbol_name]['avgPrice'] ) 
+                fee = - float(  jango_info[symbol_name]['cumRealisedPnl'] )
+
+                # fee * 2 when buy and sell
+                jango_info[symbol_name]['profit'] = round( current_price * current_size  - original_price * current_size  - (fee * 2), 2)
+                jango_info[symbol_name]['pnl value'] = round( original_price * current_size , 2)
+
+            calculate_option_pair_profit()
+
+            time.sleep(0.1)
+            print("-", end='')
+        except Exception as e:
+            print("except {}".format( e ))
+            time.sleep(3)
+
+
+
+
+
 if __name__ == "__main__":
     # get postion
     handler = logging.StreamHandler()
@@ -521,35 +604,9 @@ if __name__ == "__main__":
         api_secret= api_secret
     )
 
-    if( arg == ''):
-        dollar_amount = 100
-    else:
-        dollar_amount = 100
+    dollar_amount = 100
 
-    count = 0
-
-    symbol_name_list = [
-                        'BTCUSDT', 
-                        'ETHUSDT', 
-                        'XRPUSDT', 
-                        'SOLUSDT' 
-                        ]
-
-    get_instruments_info(category="linear", symbol_name_list= symbol_name_list)
-    get_positions(category="linear", settle_coin= 'USDT')
-
-    while True:
-        try:
-            # Kline interval. 1,3,5,15,30,60,120,240,360,720,D,M,W
-            get_candle(category="linear", symbol_name_list = symbol_name_list, interval= str(interval) )
-
-            determine_buy_and_sell(symbol_name_list)
-
-            time.sleep(0.1)
-            count = count + 1
-            print("-", end='')
-        except Exception as e:
-            print("except {}".format( e ))
-            time.sleep(3)
+    # processLinear()
+    processOption()
 
     pass
