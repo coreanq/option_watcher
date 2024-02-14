@@ -231,10 +231,10 @@ def calculate_option_pair_profit():
                 if( key in symbol_name):
                     file_log.warning( '{}'.format( jango_info[symbol_name] ) )
             file_log.warning( info )
-            make_place_order_option( key )
+            make_place_order_option( key, maemae_type='Sell', reduced_only=True )
 
 
-def make_place_order_option(symbol_pair_name: str, maemae_type : str):
+def make_place_order_option(symbol_pair_name: str, maemae_type : str, reduced_only :bool = True):
     target_symbol_list = [] 
 
     for key, value in jango_info.items():
@@ -244,19 +244,25 @@ def make_place_order_option(symbol_pair_name: str, maemae_type : str):
 
     requests = []
 
+    count = 0
     for item in target_symbol_list:
         request = {}
 
-        if( len(item['b']) != 0):
+        current_coin_info = coin_info[ item['symbol'] ]
+
+        if( len(  current_coin_info['b'] ) != 0):
+            request['reduceOnly'] = reduced_only # Sell 주문이 Short 으로 나가면 역방향으로 계좌 증가하므로 증가하는 방향은 자제 하게 함 
             request['category'] = 'option', 
             request['symbol'] = item['symbol']
             request['orderType'] = 'Limit'
             request['side'] = maemae_type
             request['qty'] = item['size']
-            request['price'] = item['b'][-1][0]
-            request['orderLinkId'] =  "{}-{}".format( item['symbol'], datetime.datetime.now().strftime("%H:%M:%S") ), # should be unique string 
+            request['price'] = current_coin_info['b'][-1][0]
+
+            # should be unique string 
+            request['orderLinkId'] =  "[{}], {}, qty: {}".format( count, datetime.datetime.now().strftime("%H:%M:%S"), item['size'] ), 
+            count = count + 1
             request['mmp'] = False,
-            request['reduceOnly'] = True # for option closing side Sell and must reduceOnly true 
             requests.append( request )
 
     result = session.place_batch_order(
@@ -265,12 +271,18 @@ def make_place_order_option(symbol_pair_name: str, maemae_type : str):
     )
 
     if( result['retMsg'] == 'OK' ):
-        result = result['result']['list']
+        result_info = result['result']['list']
 
-        file_log.warning( json.dumps( result, indent=2 ))
-        print( json.dumps(result, indent=2)  )
+        # 명령어 처리 결과가 Msg 값으로 저장됨
+        result_ext_info = result['retExtInfo']['list']
 
-        for item in result:
+        file_log.warning( json.dumps( result_info, indent=2 ))
+        print( json.dumps(result_info, indent=2)  )
+
+        file_log.warning( json.dumps( result_ext_info, indent=2 ))
+        print( json.dumps(result_ext_info, indent=2)  )
+
+        for item in result_info:
             del jango_info[item['symbol']]
 
 
@@ -370,6 +382,8 @@ def make_place_order_linear(symbol_name: str, maemae_side: str, qty: str, reduce
 
     request['orderLinkId'] = link_order_id_string
     return request
+
+
 def determine_buy_and_sell(symbol_name_list: list):
 
     requests = []
@@ -536,12 +550,12 @@ def processLinear():
 
 def processOption():
 
-    get_positions(category="option", settle_coin= 'USDC')
-    symbol_name_list = list( get_symbol_name_list() )
-
     while True:
         try:
             # for option
+            get_positions(category="option", settle_coin= 'USDC')
+            symbol_name_list = list( get_symbol_name_list() )
+
             get_orderbook(category="option", symbol_name_list=symbol_name_list)
 
             for symbol_name in symbol_name_list:
