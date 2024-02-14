@@ -211,11 +211,13 @@ def calculate_option_pair_profit():
         if( '-P' not in key and '-C' not in key ):
             continue
         symbol_pair_name = key.split('-')[1]
+
         if( symbol_pair_name not in total_profit ):
             total_profit[symbol_pair_name] = {} 
             total_profit[symbol_pair_name]['profit'] = 0
             total_profit[symbol_pair_name]['pnl value'] = 0
 
+        # strangle 전략이믈 양방향의 수익과 손익 분기점 값을 모두 더해준다 
         total_profit[symbol_pair_name]['profit'] = round( total_profit[symbol_pair_name]['profit'] + value['profit'], 6)
         total_profit[symbol_pair_name]['pnl value'] = round( total_profit[symbol_pair_name]['pnl value'] + value['pnl value'], 6)
 
@@ -567,7 +569,7 @@ def processOption():
 
             calculate_option_pair_profit()
 
-            time.sleep(0.1)
+            time.sleep(0.5)
             print("-", end='')
         except Exception as e:
             print("except {}".format( e ))
